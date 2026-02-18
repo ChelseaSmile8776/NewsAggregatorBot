@@ -5,6 +5,7 @@ import com.project.entity.Source;
 import com.project.entity.TargetChannel;
 import com.project.repository.SourceRepository;
 import com.project.repository.TargetChannelRepository;
+import com.project.service.BotService;
 import com.project.service.keyboard.KeyboardService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -26,13 +27,16 @@ public class NewsBot extends TelegramLongPollingBot {
     private final SourceRepository sourceRepository;
     private final TargetChannelRepository targetChannelRepository;
     private final KeyboardService keyboardService; // <-- Добавь это поле и в конструктор!
+    private final BotService botService;
 
-    public NewsBot(BotConfig config, SourceRepository sourceRepository, TargetChannelRepository targetChannelRepository, KeyboardService keyboardService) {
+
+    public NewsBot(BotConfig config, SourceRepository sourceRepository, TargetChannelRepository targetChannelRepository, KeyboardService keyboardService, BotService botService) {
         super(config.getBotToken());
         this.config = config;
         this.sourceRepository = sourceRepository;
         this.targetChannelRepository = targetChannelRepository;
         this.keyboardService = keyboardService;
+        this.botService = botService;
     }
 
     @Override
@@ -41,9 +45,10 @@ public class NewsBot extends TelegramLongPollingBot {
     }
 
     // ... внутри класса NewsBot ...
-    @Transactional
     @Override
+    // Убрал @Transactional отсюда, так как он тут не работает. Все транзакции внутри BotService.
     public void onUpdateReceived(Update update) {
+
         // --- 1. ОБРАБОТКА НАЖАТИЙ НА INLINE-КНОПКИ ---
         if (update.hasCallbackQuery()) {
             String callData = update.getCallbackQuery().getData();
@@ -51,35 +56,30 @@ public class NewsBot extends TelegramLongPollingBot {
             int messageId = update.getCallbackQuery().getMessage().getMessageId();
 
             if (callData.startsWith("source_")) {
-                // Нажали на название источника -> Показываем детальное меню
+                // ИСПРАВЛЕНИЕ: Используем сервис, чтобы избежать LazyInitializationException
                 Long sourceId = Long.parseLong(callData.split("_")[1]);
-                var sourceOpt = sourceRepository.findById(sourceId);
+                String text = botService.getSourceInfoText(sourceId); // <-- ВОТ ТУТ МЫ ЧИНИМ ОШИБКУ
 
-                if (sourceOpt.isPresent()) {
-                    Source s = sourceOpt.get();
-                    String text = "📡 <b>Источник:</b> " + s.getName() + "\n" +
-                            "🔗 Ссылка: " + s.getUrl() + "\n" +
-                            "🎯 Целевой канал: " + (s.getTargetChannel() != null ? s.getTargetChannel().getTitle() : "Нет");
-
-                    // Редактируем сообщение: меняем список на инфо об источнике
+                if (text != null) {
                     editMessage(chatId, messageId, text, keyboardService.getSourceControlKeyboard(sourceId));
+                } else {
+                    // Если вдруг источник удалили пока мы смотрели меню
+                    editMessage(chatId, messageId, "⚠️ Источник не найден.", null);
                 }
             }
             else if (callData.startsWith("delete_")) {
-                // Удаляем источник
                 Long sourceId = Long.parseLong(callData.split("_")[1]);
-                sourceRepository.deleteById(sourceId);
+                botService.deleteSource(sourceId); // <-- Используем сервис для надежности
 
-                // Возвращаемся к списку (обновленному)
-                var sources = sourceRepository.findAll();
+                // Возвращаемся к списку
+                var sources = botService.getAllSources();
                 editMessage(chatId, messageId, "✅ Источник удален.\nВыберите источник:", keyboardService.getSourcesListKeyboard(sources));
             }
             else if (callData.equals("back_to_list")) {
-                // Возвращаемся к списку
-                var sources = sourceRepository.findAll();
+                var sources = botService.getAllSources(); // <-- Используем сервис
                 editMessage(chatId, messageId, "📺 Ваши источники:", keyboardService.getSourcesListKeyboard(sources));
             }
-            return; // Завершаем обработку колбэка
+            return;
         }
 
         // --- 2. ОБРАБОТКА СООБЩЕНИЙ ---
@@ -87,7 +87,7 @@ public class NewsBot extends TelegramLongPollingBot {
             var message = update.getMessage();
             long chatId = message.getChatId();
 
-            // Логика добавления ЦЕЛЕВОГО канала (бота добавили админом)
+            // Логика добавления ЦЕЛЕВОГО канала
             if (update.hasMyChatMember()) {
                 var chatMember = update.getMyChatMember();
                 String status = chatMember.getNewChatMember().getStatus();
@@ -95,14 +95,7 @@ public class NewsBot extends TelegramLongPollingBot {
                 if ("administrator".equals(status)) {
                     String targetChatId = String.valueOf(chatMember.getChat().getId());
                     String title = chatMember.getChat().getTitle();
-
-                    if (targetChannelRepository.findByTelegramId(targetChatId).isEmpty()) {
-                        TargetChannel target = new TargetChannel();
-                        target.setTelegramId(targetChatId);
-                        target.setTitle(title);
-                        targetChannelRepository.save(target);
-                        log.info("Новый целевой канал добавлен: {} ({})", title, targetChatId);
-                    }
+                    botService.addTargetChannel(targetChatId, title); // <-- Сервис
                 }
             }
 
@@ -117,24 +110,10 @@ public class NewsBot extends TelegramLongPollingBot {
                     return;
                 }
 
-                String url = "https://t.me/s/" + username;
-
-                boolean exists = sourceRepository.findByUrl(url).isPresent();
-
-                if (!exists) {
-                    Source source = new Source();
-                    source.setUrl(url);
-                    source.setName(title);
-                    source.setSystemPrompt("Ты новостной агрегатор.");
-
-                    Optional<TargetChannel> defaultTarget = targetChannelRepository.findAll().stream().findFirst();
-                    defaultTarget.ifPresent(source::setTargetChannel);
-
-                    sourceRepository.save(source);
-                    sendText(chatId, "✅ Источник добавлен: " + title + "\nПривязан к каналу: " + (defaultTarget.map(TargetChannel::getTitle).orElse("Нет целевых каналов!")));
-                } else {
-                    sendText(chatId, "⚠️ Этот источник уже есть в базе.");
-                }
+                // Вся логика сохранения и проверок теперь внутри addSource
+                // Это чище и надежнее
+                String result = botService.addSource(username, title);
+                sendText(chatId, result);
             }
 
             // ОБРАБОТКА КОМАНД И КНОПОК МЕНЮ
@@ -145,11 +124,10 @@ public class NewsBot extends TelegramLongPollingBot {
                     sendMenu(chatId, "👋 Добро пожаловать в Панель Управления!\n\nИспользуй кнопки ниже для навигации.");
                 }
                 else if (text.equals("📺 Мои Каналы")) {
-                    var sources = sourceRepository.findAll();
+                    var sources = botService.getAllSources(); // <-- Сервис
                     if (sources.isEmpty()) {
                         sendText(chatId, "Список источников пуст.");
                     } else {
-                        // Шлем сообщение с INLINE-КНОПКАМИ
                         SendMessage msg = new SendMessage();
                         msg.setChatId(String.valueOf(chatId));
                         msg.setText("Выберите источник для управления:");
