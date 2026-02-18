@@ -24,7 +24,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CollectorService {
 
-    private final SourceRepository sourceRepository; // <-- Был ChannelRepository
+    private final SourceRepository sourceRepository;
     private final ProcessedNewsRepository processedNewsRepository;
     private final PostQueueRepository postQueueRepository;
     private final OpenAIService openAIService;
@@ -32,7 +32,7 @@ public class CollectorService {
     @Scheduled(fixedRate = 600000) // 10 минут
     public void collectNews() {
         log.info("Начинаю сбор новостей...");
-        List<Source> sources = sourceRepository.findAll(); // <-- Берем источники
+        List<Source> sources = sourceRepository.findAll();
 
         if (sources.isEmpty()) {
             log.warn("Нет активных источников!");
@@ -46,13 +46,18 @@ public class CollectorService {
                 log.error("Ошибка при обработке источника {}: {}", source.getName(), e.getMessage());
             }
         }
+        log.info("Сбор новостей завершен.");
     }
 
     private void processSource(Source source) throws IOException {
-        String url = source.getUrl();
-        if (url == null || url.isEmpty()) return;
+        log.info("Обрабатываю источник: {}", source.getName());
 
-        // Если у источника нет целевого канала (куда постить) — пропускаем
+        String url = source.getUrl();
+        if (url == null || url.isEmpty()) {
+            log.warn("У источника {} нет URL!", source.getName());
+            return;
+        }
+
         TargetChannel targetChannel = source.getTargetChannel();
         if (targetChannel == null) {
             log.warn("Источник {} не привязан ни к одному каналу! Пропускаем.", source.getName());
@@ -62,19 +67,22 @@ public class CollectorService {
         Document doc = Jsoup.connect(url).get();
         Elements posts = doc.select(".tgme_widget_message_text");
 
-        if (posts.isEmpty()) return;
-
-        String lastPostText = posts.last().text();
-
-        // Проверка на пустоту
-        if (lastPostText == null || lastPostText.trim().isEmpty()) {
+        if (posts.isEmpty()) {
+            log.warn("Не нашел постов на странице {}!", url);
             return;
         }
 
-        // Уникальный ID новости
+        String lastPostText = posts.last().text();
+
+        if (lastPostText == null || lastPostText.trim().isEmpty()) {
+            log.info("Последний пост пустой (или картинка без текста). Пропускаем.");
+            return;
+        }
+
         String uniqueId = String.valueOf((source.getName() + lastPostText).hashCode());
 
         if (processedNewsRepository.existsById(uniqueId)) {
+            log.info("Этот пост уже был обработан (дубликат). Пропускаем.");
             return;
         }
 
@@ -84,13 +92,12 @@ public class CollectorService {
         processedNews.setOriginalUrl(url);
         processedNewsRepository.save(processedNews);
 
-        log.info("Генерирую пост из источника: {}", source.getName());
+        log.info("Генерирую саммари для поста: {}", lastPostText.substring(0, Math.min(20, lastPostText.length())));
 
         String summary = openAIService.summarize(lastPostText, source.getSystemPrompt());
 
-        // Сохраняем в очередь ДЛЯ НУЖНОГО КАНАЛА
         PostQueue postQueue = new PostQueue();
-        postQueue.setTargetChannel(targetChannel); // <-- ВАЖНО: Привязываем к TargetChannel
+        postQueue.setTargetChannel(targetChannel);
         postQueue.setContent(summary);
         postQueue.setPriority(0);
         postQueue.setScheduledTime(LocalDateTime.now());
