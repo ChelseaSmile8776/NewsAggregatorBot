@@ -8,6 +8,7 @@ import com.project.repository.TargetChannelRepository;
 import com.project.service.keyboard.KeyboardService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -40,7 +41,7 @@ public class NewsBot extends TelegramLongPollingBot {
     }
 
     // ... внутри класса NewsBot ...
-
+    @Transactional
     @Override
     public void onUpdateReceived(Update update) {
         // --- 1. ОБРАБОТКА НАЖАТИЙ НА INLINE-КНОПКИ ---
