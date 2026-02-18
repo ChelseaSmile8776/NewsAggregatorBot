@@ -1,7 +1,8 @@
 package com.project.scheduler;
 
-import com.project.bot.NewsBot;
+import com.project.entity.PostQueue;
 import com.project.entity.Source;
+import com.project.repository.PostQueueRepository;
 import com.project.service.BotService;
 import com.project.service.OpenAIService;
 import com.project.service.ParserService;
@@ -10,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Component
@@ -20,7 +22,7 @@ public class NewsScheduler {
     private final BotService botService;
     private final ParserService parserService;
     private final OpenAIService openAiService;
-    private final NewsBot newsBot;
+    private final PostQueueRepository postQueueRepository;
 
     @Scheduled(fixedDelayString = "${scheduler.delay:900000}")
     public void processNews() {
@@ -32,39 +34,41 @@ public class NewsScheduler {
             if (source.getTargetChannel() == null) continue;
 
             try {
-                List<String> newPosts = parserService.parseNewPosts(source);
+                // Парсим (возвращает ParsedPost)
+                List<ParserService.ParsedPost> newPosts = parserService.parseNewPosts(source);
 
                 if (newPosts.isEmpty()) continue;
 
-                log.info("🔥 Найдено {} потенциальных постов в '{}'", newPosts.size(), source.getName());
+                log.info("🔥 Найдено {} постов в '{}'", newPosts.size(), source.getName());
 
-                for (String originalText : newPosts) {
+                for (ParserService.ParsedPost post : newPosts) {
 
                     String systemPrompt = (source.getSystemPrompt() != null && !source.getSystemPrompt().isEmpty())
                             ? source.getSystemPrompt()
                             : "Ты редактор Telegram-канала.";
 
-                    String summary = openAiService.summarize(originalText, systemPrompt);
+                    // Рерайтим
+                    String summary = openAiService.summarize(post.getText(), systemPrompt);
 
-                    // Проверка на рекламу (SKIP)
                     if (summary != null && !summary.contains("SKIP")) {
-                        try {
-                            long targetChatId = Long.parseLong(source.getTargetChannel().getTelegramId());
-                            newsBot.sendText(targetChatId, summary);
-                            log.info("✅ Опубликовано в канал: {}", source.getTargetChannel().getTitle());
-                            Thread.sleep(5000);
-                        } catch (Exception e) {
-                            log.error("❌ Ошибка отправки: {}", e.getMessage());
-                        }
+                        // СОХРАНЯЕМ В ОЧЕРЕДЬ
+                        PostQueue queueItem = new PostQueue();
+                        queueItem.setContent(summary);
+                        queueItem.setImageUrl(post.getImageUrl()); // Сохраняем URL картинки
+                        queueItem.setTargetChannel(source.getTargetChannel());
+                        queueItem.setStatus(PostQueue.Status.PENDING);
+                        queueItem.setScheduledTime(LocalDateTime.now());
+
+                        postQueueRepository.save(queueItem);
+                        log.info("📥 Добавлено в очередь: {}", source.getName());
                     } else {
-                        log.info("🚫 Реклама или мусор отсеяны AI: {}", source.getName());
+                        log.info("🚫 Отсеяно (реклама/спам): {}", source.getName());
                     }
                 }
-
             } catch (Exception e) {
-                log.error("❌ Ошибка источника {}: {}", source.getName(), e.getMessage());
+                log.error("❌ Ошибка {}: {}", source.getName(), e.getMessage());
             }
         }
-        log.info("✅ Проверка завершена.");
+        log.info("✅ Цикл проверки завершен.");
     }
 }

@@ -9,7 +9,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -209,6 +211,24 @@ public class NewsBot extends TelegramLongPollingBot {
                     sendText(chatId, "Настройки пока недоступны.");
                 }
             }
+        }
+    }
+
+    // Добавить импорты:
+    // import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+    // import org.telegram.telegrambots.meta.api.objects.InputFile;
+
+    public void sendPhoto(long chatId, String imageUrl, String caption) {
+        SendPhoto photo = new SendPhoto();
+        photo.setChatId(String.valueOf(chatId));
+        photo.setPhoto(new InputFile(imageUrl));
+        photo.setCaption(caption);
+        photo.setParseMode("HTML");
+
+        try {
+            execute(photo);
+        } catch (TelegramApiException e) {
+            log.error("Ошибка отправки фото: {}", e.getMessage());
         }
     }
 

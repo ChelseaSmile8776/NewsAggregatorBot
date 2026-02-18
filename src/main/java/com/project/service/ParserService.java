@@ -2,6 +2,7 @@ package com.project.service;
 
 import com.project.entity.Source;
 import com.project.repository.SourceRepository;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
@@ -15,6 +16,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -23,8 +26,14 @@ public class ParserService {
 
     private final SourceRepository sourceRepository;
 
-    public List<String> parseNewPosts(Source source) {
-        List<String> newPosts = new ArrayList<>();
+    @Data
+    public static class ParsedPost {
+        private String text;
+        private String imageUrl;
+    }
+
+    public List<ParsedPost> parseNewPosts(Source source) {
+        List<ParsedPost> newPosts = new ArrayList<>();
 
         try {
             Document doc = Jsoup.connect(source.getUrl()).get();
@@ -51,18 +60,29 @@ public class ParserService {
                 }
 
                 if (postId > lastKnownId) {
-                    if (postId > maxIdOnPage) {
-                        maxIdOnPage = postId;
-                    }
+                    if (postId > maxIdOnPage) maxIdOnPage = postId;
 
                     if (!isFirstRun) {
+                        // 1. Извлекаем текст
                         Element textElement = msg.selectFirst(".tgme_widget_message_text");
+
+                        // 2. Извлекаем картинку
+                        String imageUrl = null;
+                        Element photoElement = msg.selectFirst(".tgme_widget_message_photo_wrap");
+                        if (photoElement != null) {
+                            String style = photoElement.attr("style");
+                            imageUrl = extractUrlFromStyle(style);
+                        }
+
                         if (textElement != null) {
                             String rawText = textElement.text();
 
-                            // Фильтр по длине и стоп-словам
+                            // Фильтр
                             if (rawText.length() > 50 && !isAd(rawText)) {
-                                newPosts.add(rawText);
+                                ParsedPost post = new ParsedPost();
+                                post.setText(rawText);
+                                post.setImageUrl(imageUrl);
+                                newPosts.add(post);
                             }
                         }
                     }
@@ -83,7 +103,16 @@ public class ParserService {
         return newPosts;
     }
 
-    // Простейший фильтр рекламы
+    private String extractUrlFromStyle(String style) {
+        // FIXED REGEX: double backslash needed for Java string escaping
+        Pattern pattern = Pattern.compile("url\\('?(.*?)'?\\)");
+        Matcher matcher = pattern.matcher(style);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
     private boolean isAd(String text) {
         String lower = text.toLowerCase();
         return lower.contains("подписывайтесь") ||
@@ -93,8 +122,7 @@ public class ParserService {
                 lower.contains("ставки") ||
                 lower.contains("казино") ||
                 lower.contains("melbet") ||
-                lower.contains("1xbet") ||
-                lower.contains("выигрыш");
+                lower.contains("1xbet");
     }
 
     @Transactional

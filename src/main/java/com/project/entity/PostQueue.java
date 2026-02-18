@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Data
-@Table(name = "post_queue_v2") // Изменили имя, чтобы Hibernate пересоздал таблицу правильно
+@Table(name = "post_queue_v2") // Hibernate создаст новую таблицу
 public class PostQueue {
 
     @Id
@@ -15,6 +15,9 @@ public class PostQueue {
 
     @Column(length = 10000)
     private String content;
+
+    @Column(length = 1000) // Поле для URL картинки
+    private String imageUrl;
 
     // ССЫЛКА НА ЦЕЛЕВОЙ КАНАЛ (Куда отправлять)
     @ManyToOne

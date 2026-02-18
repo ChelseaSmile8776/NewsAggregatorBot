@@ -12,4 +12,5 @@ public interface PostQueueRepository extends JpaRepository<PostQueue, Long> {
     @Query("SELECT p FROM PostQueue p WHERE p.status = 'PENDING' AND p.scheduledTime <= :now ORDER BY p.priority DESC, p.scheduledTime ASC")
     List<PostQueue> findReadyToPublish(LocalDateTime now, Pageable pageable);
     List<PostQueue> findAllByStatusAndScheduledTimeBefore(PostQueue.Status status, LocalDateTime time);
+    List<PostQueue> findByStatusOrderByScheduledTimeAsc(PostQueue.Status status);
 }

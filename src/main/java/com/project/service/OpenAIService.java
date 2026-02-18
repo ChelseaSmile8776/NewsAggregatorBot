@@ -36,12 +36,17 @@ public class OpenAIService {
         Map<String, Object> body = new HashMap<>();
         body.put("model", "gpt-4o-mini");
 
+        // Усиленный промпт
+        String strictPrompt = systemPrompt +
+                "\n\nИНСТРУКЦИЯ:\n" +
+                "1. Верни ТОЛЬКО готовый текст поста. Без вступлений типа 'Вот саммари'.\n" +
+                "2. Если текст - мусор/реклама/спам -> верни слово SKIP.\n" +
+                "3. Используй HTML-теги: <b>Заголовок</b>, <i>акценты</i>.\n" +
+                "4. Структура: Заголовок (жирным) -> Пустая строка -> Суть -> 2-3 хештега.";
+
         List<Map<String, String>> messages = List.of(
-                Map.of("role", "system", "content", systemPrompt),
-                Map.of("role", "user", "content",
-                        "Проанализируй текст. Если это реклама, спам, розыгрыш, ставки или приглашение подписаться на другой канал — верни строго одно слово: SKIP.\n" +
-                                "Если это нормальная новость — сделай качественный рерайт (суть, эмодзи, хештеги).\n\n" +
-                                "Текст новости:\n" + text)
+                Map.of("role", "system", "content", strictPrompt),
+                Map.of("role", "user", "content", text)
         );
 
         body.put("messages", messages);
