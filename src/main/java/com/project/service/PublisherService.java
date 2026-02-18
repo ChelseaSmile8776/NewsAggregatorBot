@@ -37,7 +37,7 @@ public class PublisherService {
                 newsBot.sendText(508490900L, post.getContent());
 
                 // Меняем статус на PUBLISHED
-                post.setStatus(PostQueue.Status.PUBLISHED);
+                post.setStatus(PostQueue.Status.SENT);
                 postQueueRepository.save(post);
 
                 log.info("Пост отправлен!");

@@ -12,18 +12,20 @@ public class PostQueue {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
-    private Channel channel;
-
-    @Column(columnDefinition = "TEXT", nullable = false)
+    @Column(length = 10000)
     private String content;
 
-    private int priority; // 0 - обычный, 100 - реклама
+    // ССЫЛКА НА ЦЕЛЕВОЙ КАНАЛ (Куда отправлять)
+    @ManyToOne
+    @JoinColumn(name = "target_channel_id")
+    private TargetChannel targetChannel;
 
     private LocalDateTime scheduledTime;
 
     @Enumerated(EnumType.STRING)
     private Status status;
 
-    public enum Status { PENDING, PUBLISHED, ERROR }
+    private int priority = 0;
+
+    public enum Status { PENDING, SENT, ERROR }
 }
