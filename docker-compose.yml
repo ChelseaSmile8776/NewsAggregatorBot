@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # Наше приложение (бот)
+  app:
+    # Имя образа должно совпадать с тем, что мы собираем в GitHub Actions
+    # Замени 'ТВОЙ_НИК_GITHUB' на реальный ник (ChelseaSmile8776) маленькими буквами!
+    image: ghcr.io/chelseasmile8776/news-aggregator-bot:latest
+    container_name: newsbot-app
+    restart: always
+    environment:
+      # Переменные берутся из файла .env, который лежит рядом на сервере
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/newsbot
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+      - BOT_NAME=${BOT_NAME}
+      - BOT_TOKEN=${BOT_TOKEN}
+      - OPENAI_TOKEN=${OPENAI_TOKEN}
+    depends_on:
+      - db
+    ports:
+      - "8080:8080"
+    networks:
+      - bot-network
+
+  # База данных PostgreSQL
+  db:
+    image: postgres:15
+    container_name: newsbot-db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_/var/lib/postgresql/data
+    networks:
+      - bot-network
+
+volumes:
+  pg_
+
+networks:
+  bot-network:
