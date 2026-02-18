@@ -27,10 +27,8 @@ public class ParserService {
         List<String> newPosts = new ArrayList<>();
 
         try {
-            // 1. Загружаем страницу (Telegram Web Preview)
+            // 1. Загружаем страницу
             Document doc = Jsoup.connect(source.getUrl()).get();
-
-            // 2. Ищем все сообщения (div с классом tgme_widget_message)
             Elements messages = doc.select(".tgme_widget_message");
 
             if (messages.isEmpty()) {
@@ -38,50 +36,53 @@ public class ParserService {
                 return Collections.emptyList();
             }
 
-            // Безопасно получаем текущий ID (если null -> 0)
+            // Определяем текущий последний ID (если null -> 0)
             int lastKnownId = (source.getLastPostId() == null) ? 0 : source.getLastPostId();
             int maxIdOnPage = lastKnownId;
 
-            // 3. Проходим по сообщениям
+            // 🔥 ФЛАГ: Если это первый запуск (ID=0), то мы НЕ публикуем старые посты
+            boolean isFirstRun = (lastKnownId == 0);
+
+            // 2. Проходим по сообщениям
             for (Element msg : messages) {
-                // Извлекаем ID поста из атрибута data-post="durov/123"
-                String dataPost = msg.attr("data-post"); // "channelname/123"
+                String dataPost = msg.attr("data-post");
                 if (dataPost.isEmpty()) continue;
 
-                // Парсим ID поста
                 int postId;
                 try {
                     postId = Integer.parseInt(dataPost.split("/")[1]);
                 } catch (Exception e) {
-                    continue; // Пропускаем кривые посты
+                    continue;
                 }
 
-                // Если пост НОВЕЕ, чем тот, что мы уже видели
+                // Если пост новее того, что мы знаем
                 if (postId > lastKnownId) {
 
-                    // Обновляем счетчик максимального ID, который мы видели на странице
+                    // Обновляем счетчик максимального ID на странице
                     if (postId > maxIdOnPage) {
                         maxIdOnPage = postId;
                     }
 
-                    // Ищем текст внутри (класс tgme_widget_message_text)
-                    Element textElement = msg.selectFirst(".tgme_widget_message_text");
-
-                    if (textElement != null) {
-                        // html() сохраняет ссылки, text() убирает все теги
-                        String rawText = textElement.text();
-
-                        // Если текст длинный и нормальный - берем
-                        if (rawText.length() > 50) {
-                            newPosts.add(rawText);
+                    // 🔥 Если это НЕ первый запуск — собираем посты для публикации
+                    if (!isFirstRun) {
+                        Element textElement = msg.selectFirst(".tgme_widget_message_text");
+                        if (textElement != null) {
+                            String rawText = textElement.text();
+                            if (rawText.length() > 50) {
+                                newPosts.add(rawText);
+                            }
                         }
                     }
                 }
             }
 
-            // 4. Сохраняем новый lastPostId в базу, чтобы в следующий раз не брать эти посты
+            // 3. Сохраняем новый lastPostId в базу
             if (maxIdOnPage > lastKnownId) {
                 updateLastPostId(source.getId(), maxIdOnPage);
+
+                if (isFirstRun) {
+                    log.info("🏁 Первый запуск для {}. Пропускаем публикацию, запомнили ID: {}", source.getName(), maxIdOnPage);
+                }
             }
 
         } catch (IOException e) {
