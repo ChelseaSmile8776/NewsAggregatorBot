@@ -6,8 +6,9 @@ import java.time.LocalDateTime;
 
 @Entity
 @Data
-@Table(name = "post_queue")
+@Table(name = "post_queue_v2") // Изменили имя, чтобы Hibernate пересоздал таблицу правильно
 public class PostQueue {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -27,5 +28,9 @@ public class PostQueue {
 
     private int priority = 0;
 
-    public enum Status { PENDING, SENT, ERROR }
+    public enum Status {
+        PENDING,
+        SENT,
+        ERROR
+    }
 }
