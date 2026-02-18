@@ -8,6 +8,6 @@ import java.util.Optional;
 
 @Repository
 public interface SourceRepository extends JpaRepository<Source, Long> {
-    Source findByName(String name);
-    Optional<Source> findByChannelId(String channelId);
+    Optional<Source> findByName(String name);
+    Optional<Source> findByUrl(String url); // <-- ВОТ ТАК ПРАВИЛЬНО
 }
