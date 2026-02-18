@@ -1,23 +1,27 @@
 package com.project.bot;
 
 import com.project.config.BotConfig;
-import lombok.extern.slf4j.Slf4j; // Используем Slf4j
+import com.project.entity.Channel;
+import com.project.repository.ChannelRepository; // <-- ИМПОРТ РЕПОЗИТОРИЯ
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
-@Slf4j // Создает поле log
+@Slf4j
 @Component
 public class NewsBot extends TelegramLongPollingBot {
 
     private final BotConfig config;
+    private final ChannelRepository channelRepository; // <-- 1. ДОБАВИЛИ ПОЛЕ
 
-    // Явный конструктор вместо @RequiredArgsConstructor, чтобы передать токен в родителя
-    public NewsBot(BotConfig config) {
-        super(config.getBotToken()); // Передаем токен в родительский конструктор
+    // 2. ОБНОВИЛИ КОНСТРУКТОР (добавили channelRepository)
+    public NewsBot(BotConfig config, ChannelRepository channelRepository) {
+        super(config.getBotToken());
         this.config = config;
+        this.channelRepository = channelRepository;
     }
 
     @Override
@@ -32,7 +36,36 @@ public class NewsBot extends TelegramLongPollingBot {
             long chatId = update.getMessage().getChatId();
 
             if (text.equals("/start")) {
-                sendText(chatId, "Привет! Я бот-агрегатор новостей. Твой ID: " + chatId);
+                sendText(chatId, "Привет! Я бот-агрегатор.\nДобавь канал: /add_channel <ID> <Имя>");
+            }
+
+            // 3. ВОТ СЮДА ПИХАЕМ ЛОГИКУ СОХРАНЕНИЯ
+            else if (text.startsWith("/add_channel")) {
+                String[] parts = text.split(" ", 3); // Делим сообщение на 3 части
+
+                if (parts.length < 3) {
+                    sendText(chatId, "Ошибка! Формат: /add_channel <ID> <Имя>");
+                    return;
+                }
+
+                String channelId = parts[1];
+                String name = parts[2];
+
+                // --- НАЧАЛО ВСТАВКИ ---
+                Channel channel = new Channel();
+                channel.setChannelId(channelId); // ID канала (например, -100123456)
+                channel.setName(name);           // Имя (например, "CryptoNews")
+                channel.setSystemPrompt("Ты новостной агрегатор. Сделай краткую выжимку."); // Дефолтный промпт
+                channel.setSignature("С уважением, бот."); // Дефолтная подпись
+
+                channelRepository.save(channel); // Сохраняем в базу!
+                // --- КОНЕЦ ВСТАВКИ ---
+
+                sendText(chatId, "Канал " + name + " успешно добавлен!");
+            }
+
+            else {
+                sendText(chatId, "Я не знаю такую команду.");
             }
         }
     }
@@ -49,4 +82,3 @@ public class NewsBot extends TelegramLongPollingBot {
         }
     }
 }
-
