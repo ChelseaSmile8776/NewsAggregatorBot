@@ -5,6 +5,7 @@ import com.project.entity.Source;
 import com.project.entity.TargetChannel;
 import com.project.repository.SourceRepository;
 import com.project.repository.TargetChannelRepository;
+import com.project.service.keyboard.KeyboardService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -21,12 +22,14 @@ public class NewsBot extends TelegramLongPollingBot {
     private final BotConfig config;
     private final SourceRepository sourceRepository;
     private final TargetChannelRepository targetChannelRepository;
+    private final KeyboardService keyboardService; // <-- Добавь это поле и в конструктор!
 
-    public NewsBot(BotConfig config, SourceRepository sourceRepository, TargetChannelRepository targetChannelRepository) {
+    public NewsBot(BotConfig config, SourceRepository sourceRepository, TargetChannelRepository targetChannelRepository, KeyboardService keyboardService) {
         super(config.getBotToken());
         this.config = config;
         this.sourceRepository = sourceRepository;
         this.targetChannelRepository = targetChannelRepository;
+        this.keyboardService = keyboardService;
     }
 
     @Override
@@ -34,10 +37,11 @@ public class NewsBot extends TelegramLongPollingBot {
         return config.getBotName();
     }
 
+    // ... внутри класса NewsBot ...
+
     @Override
     public void onUpdateReceived(Update update) {
         // Логика добавления ЦЕЛЕВОГО канала (куда постим)
-        // Бот должен быть админом в канале
         if (update.hasMyChatMember()) {
             var chatMember = update.getMyChatMember();
             String status = chatMember.getNewChatMember().getStatus();
@@ -60,11 +64,10 @@ public class NewsBot extends TelegramLongPollingBot {
             var message = update.getMessage();
             long chatId = message.getChatId();
 
-            // Логика добавления ИСТОЧНИКА (откуда берем)
-            // Пользователь пересылает пост из канала-источника
+            // Логика добавления ИСТОЧНИКА (пересылка)
             if (message.getForwardFromChat() != null) {
                 var channelChat = message.getForwardFromChat();
-                String username = channelChat.getUserName(); // Получаем юзернейм (t.me/username)
+                String username = channelChat.getUserName();
                 String title = channelChat.getTitle();
 
                 if (username == null) {
@@ -72,14 +75,9 @@ public class NewsBot extends TelegramLongPollingBot {
                     return;
                 }
 
-                String url = "https://t.me/" + username;
+                String url = "https://t.me/s/" + username; // <-- Сразу ставим /s/ для парсинга
 
-                // Проверяем, есть ли уже такой источник
-                // (Предполагаем, что в SourceRepository ты добавил метод findByUrl, если нет - добавь)
-                // Если метода нет, можно пока искать перебором, но лучше добавить в репозиторий.
-                // Пока сделаем простую проверку:
-                boolean exists = sourceRepository.findAll().stream()
-                        .anyMatch(s -> s.getUrl().equals(url));
+                boolean exists = sourceRepository.findByUrl(url).isPresent(); // Используем метод репозитория
 
                 if (!exists) {
                     Source source = new Source();
@@ -87,8 +85,6 @@ public class NewsBot extends TelegramLongPollingBot {
                     source.setName(title);
                     source.setSystemPrompt("Ты новостной агрегатор.");
 
-                    // ВАЖНО: Пока привязываем к первому попавшемуся целевому каналу (или null)
-                    // В будущем тут будет меню выбора "Куда привязать?"
                     Optional<TargetChannel> defaultTarget = targetChannelRepository.findAll().stream().findFirst();
                     defaultTarget.ifPresent(source::setTargetChannel);
 
@@ -99,25 +95,55 @@ public class NewsBot extends TelegramLongPollingBot {
                 }
             }
 
-            // Обычные команды
+            // ОБРАБОТКА КОМАНД И КНОПОК МЕНЮ
             if (message.hasText()) {
                 String text = message.getText();
 
                 if (text.equals("/start")) {
-                    sendText(chatId, "Привет! \n1. Добавь меня админом в ТВОЙ канал.\n2. Перешли мне пост из ЧУЖОГО канала, чтобы я начал его читать.");
-                } else if (text.equals("/list")) {
+                    sendMenu(chatId, "👋 Добро пожаловать в Панель Управления!\n\nИспользуй кнопки ниже для навигации.");
+                }
+                else if (text.equals("📺 Мои Каналы")) {
                     var sources = sourceRepository.findAll();
                     if (sources.isEmpty()) {
                         sendText(chatId, "Список источников пуст.");
                     } else {
                         StringBuilder sb = new StringBuilder("📋 Твои источники:\n");
-                        sources.forEach(s -> sb.append(s.getName()).append(" -> ").append(s.getUrl()).append("\n"));
+                        sources.forEach(s -> sb.append("🔹 ").append(s.getName()).append("\n   (").append(s.getUrl()).append(")\n"));
                         sendText(chatId, sb.toString());
                     }
+                }
+                else if (text.equals("📢 Сделать Пост")) {
+                    sendText(chatId, "Функция 'Сделать Пост' в разработке... 🚧");
+                }
+                else if (text.equals("👥 Пользователи")) {
+                    sendText(chatId, "Функция 'Пользователи' в разработке... 🚧");
+                }
+                else if (text.equals("⚙️ Настройки")) {
+                    sendText(chatId, "Настройки пока недоступны.");
+                }
+                else if (text.equals("/list")) { // Оставим старую команду на всякий случай
+                    sendText(chatId, "Используй кнопку '📺 Мои Каналы'!");
                 }
             }
         }
     }
+
+    // Метод для отправки сообщения с клавиатурой (МЕНЮ)
+    public void sendMenu(long chatId, String text) {
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        message.setText(text);
+
+        // Получаем клавиатуру из сервиса
+        message.setReplyMarkup(keyboardService.getMainMenu());
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            log.error("Ошибка отправки меню: {}", e.getMessage());
+        }
+    }
+
 
     public void sendText(long chatId, String text) {
         SendMessage message = new SendMessage();
