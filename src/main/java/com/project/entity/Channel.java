@@ -12,12 +12,14 @@ public class Channel {
     private Long id;
 
     @Column(unique = true, nullable = false)
-    private String channelId; // ID канала (-100...)
+    private String channelId;
 
-    private String name;      // Название для себя (Tech, Crypto)
+    private String name;
+
+    private String username; // <-- ДОБАВЬ ЭТО ПОЛЕ!
 
     @Column(columnDefinition = "TEXT")
-    private String systemPrompt; // "Ты дерзкий криптан..."
+    private String systemPrompt;
 
-    private String signature; // Подпись
+    private String signature;
 }

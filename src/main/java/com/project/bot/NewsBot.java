@@ -37,23 +37,30 @@ public class NewsBot extends TelegramLongPollingBot {
 
             // 1. Если это пересланное сообщение из КАНАЛА
             if (message.getForwardFromChat() != null) {
+                // ... внутри if (message.getForwardFromChat() != null) ...
+
                 var channelChat = message.getForwardFromChat();
                 String channelId = String.valueOf(channelChat.getId());
                 String channelName = channelChat.getTitle();
+                String username = channelChat.getUserName(); // <-- Получаем юзернейм
 
-                // Проверяем, есть ли уже такой канал
+                // Проверка на null (у приватных каналов нет юзернейма)
+                if (username == null) {
+                    sendText(chatId, "⚠️ Этот канал приватный или у него нет ссылки. Я не смогу его читать.");
+                    return;
+                }
+
                 if (channelRepository.findByChannelId(channelId).isEmpty()) {
                     Channel channel = new Channel();
                     channel.setChannelId(channelId);
                     channel.setName(channelName);
+                    channel.setUsername(username); // <-- Сохраняем юзернейм
                     channel.setSystemPrompt("Ты новостной агрегатор.");
                     channelRepository.save(channel);
 
-                    sendText(chatId, "✅ Канал добавлен!\nНазвание: " + channelName + "\nID: " + channelId);
-                } else {
-                    sendText(chatId, "⚠️ Этот канал уже добавлен.");
+                    sendText(chatId, "✅ Канал добавлен!\nСсылка: @" + username);
                 }
-                return;
+
             }
 
             // 2. Обычные команды
