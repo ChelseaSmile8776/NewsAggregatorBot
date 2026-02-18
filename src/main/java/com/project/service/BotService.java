@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -41,9 +42,23 @@ public class BotService {
         return sourceRepository.findAll();
     }
 
+    // НОВЫЙ МЕТОД: Получить источники только конкретного канала
+    @Transactional(readOnly = true)
+    public List<Source> getSourcesByTargetId(Long targetId) {
+        return sourceRepository.findAll().stream()
+                .filter(s -> s.getTargetChannel() != null && s.getTargetChannel().getId().equals(targetId))
+                .collect(Collectors.toList());
+    }
+
     @Transactional(readOnly = true)
     public List<TargetChannel> getAllTargets() {
         return targetChannelRepository.findAll();
+    }
+
+    // НОВЫЙ МЕТОД: Найти канал по ID
+    @Transactional(readOnly = true)
+    public TargetChannel getTargetChannel(Long id) {
+        return targetChannelRepository.findById(id).orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -51,7 +66,6 @@ public class BotService {
         return sourceRepository.findByUrl(url).isPresent();
     }
 
-    // Сохраняет новый источник с привязкой к КОНКРЕТНОМУ каналу
     @Transactional
     public void addSourceWithTarget(String url, String name, Long targetId) {
         TargetChannel target = targetChannelRepository.findById(targetId)

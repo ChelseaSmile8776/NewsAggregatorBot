@@ -14,6 +14,7 @@ import java.util.List;
 @Service
 public class KeyboardService {
 
+    // ГЛАВНОЕ МЕНЮ (REPLY)
     public ReplyKeyboardMarkup getMainMenu() {
         ReplyKeyboardMarkup markup = new ReplyKeyboardMarkup();
         markup.setResizeKeyboard(true);
@@ -36,6 +37,7 @@ public class KeyboardService {
         return markup;
     }
 
+    // СПИСОК ИСТОЧНИКОВ
     public InlineKeyboardMarkup getSourcesListKeyboard(List<Source> sources) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -52,6 +54,7 @@ public class KeyboardService {
         return markup;
     }
 
+    // УПРАВЛЕНИЕ ИСТОЧНИКОМ
     public InlineKeyboardMarkup getSourceControlKeyboard(Long sourceId) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -66,7 +69,7 @@ public class KeyboardService {
         List<InlineKeyboardButton> row2 = new ArrayList<>();
         InlineKeyboardButton backBtn = new InlineKeyboardButton();
         backBtn.setText("🔙 Назад к списку");
-        backBtn.setCallbackData("back_to_list");
+        backBtn.setCallbackData("back_to_list"); // Эта кнопка вернет к списку источников канала
         row2.add(backBtn);
         rows.add(row2);
 
@@ -74,7 +77,7 @@ public class KeyboardService {
         return markup;
     }
 
-    // НОВЫЙ МЕТОД: Кнопки выбора целевого канала
+    // ВЫБОР ЦЕЛЕВОГО КАНАЛА (ПРИ ДОБАВЛЕНИИ ИСТОЧНИКА)
     public InlineKeyboardMarkup getTargetChannelsKeyboard(List<TargetChannel> channels) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -87,6 +90,50 @@ public class KeyboardService {
             row.add(btn);
             rows.add(row);
         }
+        markup.setKeyboard(rows);
+        return markup;
+    }
+
+    // --- НОВЫЕ МЕТОДЫ ДЛЯ СЕТКИ КАНАЛОВ ---
+
+    // 1. СПИСОК ТВОИХ КАНАЛОВ (СЕТКА)
+    public InlineKeyboardMarkup getTargetChannelsListKeyboard(List<TargetChannel> channels) {
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        for (TargetChannel ch : channels) {
+            List<InlineKeyboardButton> row = new ArrayList<>();
+            InlineKeyboardButton btn = new InlineKeyboardButton();
+            btn.setText("📢 " + ch.getTitle());
+            btn.setCallbackData("mychannel_" + ch.getId()); // Открывает меню канала
+            row.add(btn);
+            rows.add(row);
+        }
+        markup.setKeyboard(rows);
+        return markup;
+    }
+
+    // 2. МЕНЮ УПРАВЛЕНИЯ КОНКРЕТНЫМ КАНАЛОМ
+    public InlineKeyboardMarkup getTargetChannelMenu(Long targetId) {
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        // Кнопка "Источники"
+        List<InlineKeyboardButton> row1 = new ArrayList<>();
+        InlineKeyboardButton sourcesBtn = new InlineKeyboardButton();
+        sourcesBtn.setText("📋 Источники");
+        sourcesBtn.setCallbackData("channel_sources_" + targetId);
+        row1.add(sourcesBtn);
+        rows.add(row1);
+
+        // Кнопка "Назад"
+        List<InlineKeyboardButton> row2 = new ArrayList<>();
+        InlineKeyboardButton backBtn = new InlineKeyboardButton();
+        backBtn.setText("🔙 Назад к списку каналов");
+        backBtn.setCallbackData("back_to_channels");
+        row2.add(backBtn);
+        rows.add(row2);
+
         markup.setKeyboard(rows);
         return markup;
     }
