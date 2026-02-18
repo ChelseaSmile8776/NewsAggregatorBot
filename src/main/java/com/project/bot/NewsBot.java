@@ -44,15 +44,25 @@ public class NewsBot extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
 
+        // --- 0. ВАЖНО: ЛОВИМ КАНАЛ, КОГДА БОТ ВИДИТ В НЕМ ПОСТ ---
+        if (update.hasChannelPost()) {
+            var post = update.getChannelPost();
+            String chatId = String.valueOf(post.getChatId());
+            String title = post.getChat().getTitle();
+
+            // Если бот видит пост, значит он там админ. Регистрируем!
+            botService.addTargetChannel(chatId, title);
+            return;
+        }
+
         // --- 1. ОБРАБОТКА НАЖАТИЙ НА INLINE-КНОПКИ ---
         if (update.hasCallbackQuery()) {
             String callData = update.getCallbackQuery().getData();
             long chatId = update.getCallbackQuery().getMessage().getChatId();
             int messageId = update.getCallbackQuery().getMessage().getMessageId();
 
-            // --- A. УПРАВЛЕНИЕ СЕТКОЙ КАНАЛОВ (НОВАЯ ЛОГИКА) ---
+            // --- A. УПРАВЛЕНИЕ СЕТКОЙ КАНАЛОВ ---
 
-            // 1. Выбрали конкретный канал из списка "Мои Каналы"
             if (callData.startsWith("mychannel_")) {
                 Long targetId = Long.parseLong(callData.split("_")[1]);
                 TargetChannel ch = botService.getTargetChannel(targetId);
@@ -64,26 +74,18 @@ public class NewsBot extends TelegramLongPollingBot {
                     editMessage(chatId, messageId, "⚠️ Канал не найден (возможно, удален).", null);
                 }
             }
-
-            // 2. Нажали "Источники" внутри меню канала
             else if (callData.startsWith("channel_sources_")) {
-                // БЫЛО: split("_")[1] -> "sources" (ОШИБКА)
-                // СТАЛО: split("_")[2] -> "123" (ПРАВИЛЬНО)
+                // Берем [2], так как формат channel_sources_ID
                 Long targetId = Long.parseLong(callData.split("_")[2]);
-
                 var sources = botService.getSourcesByTargetId(targetId);
 
-
                 if (sources.isEmpty()) {
-                    // Оставляем в меню канала, просто говорим что пусто
                     editMessage(chatId, messageId, "В этом канале пока нет источников.", keyboardService.getTargetChannelMenu(targetId));
                 } else {
                     editMessage(chatId, messageId, "📋 Источники канала:",
                             keyboardService.getSourcesListKeyboard(sources));
                 }
             }
-
-            // 3. Нажали "Назад к списку каналов"
             else if (callData.equals("back_to_channels")) {
                 var channels = botService.getAllTargets();
                 editMessage(chatId, messageId, "📢 <b>Твоя Сетка Каналов:</b>", keyboardService.getTargetChannelsListKeyboard(channels));
@@ -104,12 +106,9 @@ public class NewsBot extends TelegramLongPollingBot {
             else if (callData.startsWith("delete_")) {
                 Long sourceId = Long.parseLong(callData.split("_")[1]);
                 botService.deleteSource(sourceId);
-
-                // После удаления сообщаем об успехе. Можно вернуть кнопку "Назад к каналам"
                 editMessage(chatId, messageId, "✅ Источник успешно удален.", null);
             }
             else if (callData.equals("back_to_list")) {
-                // Возврат в главное меню каналов (самое надежное поведение)
                 var channels = botService.getAllTargets();
                 editMessage(chatId, messageId, "📢 <b>Твоя Сетка Каналов:</b>", keyboardService.getTargetChannelsListKeyboard(channels));
             }
@@ -121,11 +120,10 @@ public class NewsBot extends TelegramLongPollingBot {
 
                 if (draft != null) {
                     botService.addSourceWithTarget(draft.getUrl(), draft.getName(), targetId);
-                    drafts.remove(chatId); // Удаляем черновик
-
+                    drafts.remove(chatId);
                     editMessage(chatId, messageId, "✅ Источник <b>" + draft.getName() + "</b> успешно добавлен!", null);
                 } else {
-                    editMessage(chatId, messageId, "⚠️ Ошибка: данные устарели. Перешлите пост заново.", null);
+                    editMessage(chatId, messageId, "⚠️ Ошибка: данные устарели.", null);
                 }
             }
             return;
@@ -136,7 +134,7 @@ public class NewsBot extends TelegramLongPollingBot {
             var message = update.getMessage();
             long chatId = message.getChatId();
 
-            // Логика добавления ЦЕЛЕВОГО канала (Бота добавили админом)
+            // Логика добавления ЦЕЛЕВОГО канала (Событие добавления бота в админы)
             if (update.hasMyChatMember()) {
                 var chatMember = update.getMyChatMember();
                 String status = chatMember.getNewChatMember().getStatus();
@@ -145,7 +143,6 @@ public class NewsBot extends TelegramLongPollingBot {
                     String targetChatId = String.valueOf(chatMember.getChat().getId());
                     String title = chatMember.getChat().getTitle();
                     botService.addTargetChannel(targetChatId, title);
-                    // Можно отправить лог себе в личку, если нужно
                 }
             }
 
@@ -173,17 +170,17 @@ public class NewsBot extends TelegramLongPollingBot {
                 draft.setName(title);
                 drafts.put(chatId, draft);
 
-                // 2. СПРАШИВАЕМ КУДА ДОБАВИТЬ (ПОКАЗЫВАЕМ СЕТКУ)
+                // 2. СПРАШИВАЕМ КУДА ДОБАВИТЬ
                 List<TargetChannel> channels = botService.getAllTargets();
                 if (channels.isEmpty()) {
-                    sendText(chatId, "⚠️ Нет целевых каналов! Сначала добавь меня админом в свой канал.");
+                    sendText(chatId, "⚠️ Нет целевых каналов! Добавь меня админом в канал и напиши туда любое сообщение.");
                 } else {
                     InlineKeyboardMarkup markup = keyboardService.getTargetChannelsKeyboard(channels);
                     sendTextWithMarkup(chatId, "🔗 Источник: <b>" + title + "</b>\nКуда будем публиковать новости?", markup);
                 }
             }
 
-            // ОБРАБОТКА ТЕКСТОВЫХ КОМАНД И ГЛАВНОГО МЕНЮ
+            // ОБРАБОТКА ТЕКСТОВЫХ КОМАНД
             if (message.hasText()) {
                 String text = message.getText();
 
@@ -191,15 +188,14 @@ public class NewsBot extends TelegramLongPollingBot {
                     sendMenu(chatId, "👋 Добро пожаловать в Панель Управления!");
                 }
                 else if (text.equals("📺 Мои Каналы")) {
-                    // ТЕПЕРЬ ПОКАЗЫВАЕМ СЕТКУ КАНАЛОВ
                     var channels = botService.getAllTargets();
                     if (channels.isEmpty()) {
-                        sendText(chatId, "Список каналов пуст. Добавь бота админом в канал!");
+                        sendText(chatId, "Список каналов пуст. Добавь бота админом в канал и напиши туда тест.");
                     } else {
                         SendMessage msg = new SendMessage();
                         msg.setChatId(String.valueOf(chatId));
                         msg.setText("📢 <b>Твоя Сетка Каналов:</b>\nВыберите канал для управления:");
-                        msg.setReplyMarkup(keyboardService.getTargetChannelsListKeyboard(channels)); // Новая клавиатура
+                        msg.setReplyMarkup(keyboardService.getTargetChannelsListKeyboard(channels));
                         try { execute(msg); } catch (Exception e) {}
                     }
                 }
