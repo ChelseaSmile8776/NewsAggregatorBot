@@ -67,8 +67,12 @@ public class NewsBot extends TelegramLongPollingBot {
 
             // 2. Нажали "Источники" внутри меню канала
             else if (callData.startsWith("channel_sources_")) {
-                Long targetId = Long.parseLong(callData.split("_")[1]);
+                // БЫЛО: split("_")[1] -> "sources" (ОШИБКА)
+                // СТАЛО: split("_")[2] -> "123" (ПРАВИЛЬНО)
+                Long targetId = Long.parseLong(callData.split("_")[2]);
+
                 var sources = botService.getSourcesByTargetId(targetId);
+
 
                 if (sources.isEmpty()) {
                     // Оставляем в меню канала, просто говорим что пусто
