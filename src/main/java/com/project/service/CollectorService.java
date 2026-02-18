@@ -14,6 +14,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -30,6 +31,7 @@ public class CollectorService {
     private final OpenAIService openAIService;
 
     @Scheduled(fixedRate = 600000) // 10 минут
+    @Transactional
     public void collectNews() {
         log.info("Начинаю сбор новостей...");
         List<Source> sources = sourceRepository.findAll();
