@@ -64,7 +64,9 @@ public class CollectorService {
             return;
         }
 
-        Document doc = Jsoup.connect(url).get();
+        Document doc = Jsoup.connect(url)
+                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+                .get();
         Elements posts = doc.select(".tgme_widget_message_text");
 
         if (posts.isEmpty()) {
