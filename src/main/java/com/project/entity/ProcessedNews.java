@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 @Table(name = "processed_news")
 public class ProcessedNews {
     @Id
-    private String urlHash;
+    private String urlHash; // Тут будет уникальная ссылка на пост
 
     private String originalUrl;
 
