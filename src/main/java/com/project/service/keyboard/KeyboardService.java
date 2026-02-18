@@ -1,6 +1,7 @@
 package com.project.service.keyboard;
 
 import com.project.entity.Source;
+import com.project.entity.TargetChannel;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
@@ -13,7 +14,6 @@ import java.util.List;
 @Service
 public class KeyboardService {
 
-    // ГЛАВНОЕ МЕНЮ (внизу экрана)
     public ReplyKeyboardMarkup getMainMenu() {
         ReplyKeyboardMarkup markup = new ReplyKeyboardMarkup();
         markup.setResizeKeyboard(true);
@@ -36,7 +36,6 @@ public class KeyboardService {
         return markup;
     }
 
-    // СПИСОК ИСТОЧНИКОВ (Inline-кнопки под сообщением)
     public InlineKeyboardMarkup getSourcesListKeyboard(List<Source> sources) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -44,31 +43,23 @@ public class KeyboardService {
         for (Source source : sources) {
             List<InlineKeyboardButton> row = new ArrayList<>();
             InlineKeyboardButton button = new InlineKeyboardButton();
-
-            // Текст: Название источника
             button.setText(source.getName());
-            // Callback: "source_ID"
             button.setCallbackData("source_" + source.getId());
-
             row.add(button);
             rows.add(row);
         }
-
         markup.setKeyboard(rows);
         return markup;
     }
 
-    // МЕНЮ УПРАВЛЕНИЯ ИСТОЧНИКОМ (Удалить / Назад)
     public InlineKeyboardMarkup getSourceControlKeyboard(Long sourceId) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
 
         List<InlineKeyboardButton> row1 = new ArrayList<>();
-
         InlineKeyboardButton deleteBtn = new InlineKeyboardButton();
         deleteBtn.setText("🗑 Удалить");
         deleteBtn.setCallbackData("delete_" + sourceId);
-
         row1.add(deleteBtn);
         rows.add(row1);
 
@@ -76,10 +67,26 @@ public class KeyboardService {
         InlineKeyboardButton backBtn = new InlineKeyboardButton();
         backBtn.setText("🔙 Назад к списку");
         backBtn.setCallbackData("back_to_list");
-
         row2.add(backBtn);
         rows.add(row2);
 
+        markup.setKeyboard(rows);
+        return markup;
+    }
+
+    // НОВЫЙ МЕТОД: Кнопки выбора целевого канала
+    public InlineKeyboardMarkup getTargetChannelsKeyboard(List<TargetChannel> channels) {
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        for (TargetChannel ch : channels) {
+            List<InlineKeyboardButton> row = new ArrayList<>();
+            InlineKeyboardButton btn = new InlineKeyboardButton();
+            btn.setText("📢 " + ch.getTitle());
+            btn.setCallbackData("target_" + ch.getId());
+            row.add(btn);
+            rows.add(row);
+        }
         markup.setKeyboard(rows);
         return markup;
     }

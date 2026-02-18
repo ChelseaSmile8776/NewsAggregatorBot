@@ -1,15 +1,12 @@
 package com.project.bot;
 
 import com.project.config.BotConfig;
-import com.project.entity.Source;
 import com.project.entity.TargetChannel;
-import com.project.repository.SourceRepository;
-import com.project.repository.TargetChannelRepository;
 import com.project.service.BotService;
 import com.project.service.keyboard.KeyboardService;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
@@ -17,24 +14,24 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
-import java.util.Optional;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
 public class NewsBot extends TelegramLongPollingBot {
 
     private final BotConfig config;
-    private final SourceRepository sourceRepository;
-    private final TargetChannelRepository targetChannelRepository;
-    private final KeyboardService keyboardService; // <-- Добавь это поле и в конструктор!
+    private final KeyboardService keyboardService;
     private final BotService botService;
 
+    // Хранилище черновиков (кто добавляет -> что добавляет)
+    private final Map<Long, SourceDraft> drafts = new ConcurrentHashMap<>();
 
-    public NewsBot(BotConfig config, SourceRepository sourceRepository, TargetChannelRepository targetChannelRepository, KeyboardService keyboardService, BotService botService) {
+    public NewsBot(BotConfig config, KeyboardService keyboardService, BotService botService) {
         super(config.getBotToken());
         this.config = config;
-        this.sourceRepository = sourceRepository;
-        this.targetChannelRepository = targetChannelRepository;
         this.keyboardService = keyboardService;
         this.botService = botService;
     }
@@ -44,9 +41,7 @@ public class NewsBot extends TelegramLongPollingBot {
         return config.getBotName();
     }
 
-    // ... внутри класса NewsBot ...
     @Override
-    // Убрал @Transactional отсюда, так как он тут не работает. Все транзакции внутри BotService.
     public void onUpdateReceived(Update update) {
 
         // --- 1. ОБРАБОТКА НАЖАТИЙ НА INLINE-КНОПКИ ---
@@ -56,28 +51,38 @@ public class NewsBot extends TelegramLongPollingBot {
             int messageId = update.getCallbackQuery().getMessage().getMessageId();
 
             if (callData.startsWith("source_")) {
-                // ИСПРАВЛЕНИЕ: Используем сервис, чтобы избежать LazyInitializationException
                 Long sourceId = Long.parseLong(callData.split("_")[1]);
-                String text = botService.getSourceInfoText(sourceId); // <-- ВОТ ТУТ МЫ ЧИНИМ ОШИБКУ
+                String text = botService.getSourceInfoText(sourceId);
 
                 if (text != null) {
                     editMessage(chatId, messageId, text, keyboardService.getSourceControlKeyboard(sourceId));
                 } else {
-                    // Если вдруг источник удалили пока мы смотрели меню
                     editMessage(chatId, messageId, "⚠️ Источник не найден.", null);
                 }
             }
             else if (callData.startsWith("delete_")) {
                 Long sourceId = Long.parseLong(callData.split("_")[1]);
-                botService.deleteSource(sourceId); // <-- Используем сервис для надежности
-
-                // Возвращаемся к списку
+                botService.deleteSource(sourceId);
                 var sources = botService.getAllSources();
                 editMessage(chatId, messageId, "✅ Источник удален.\nВыберите источник:", keyboardService.getSourcesListKeyboard(sources));
             }
             else if (callData.equals("back_to_list")) {
-                var sources = botService.getAllSources(); // <-- Используем сервис
+                var sources = botService.getAllSources();
                 editMessage(chatId, messageId, "📺 Ваши источники:", keyboardService.getSourcesListKeyboard(sources));
+            }
+            // ОБРАБОТКА ВЫБОРА ЦЕЛЕВОГО КАНАЛА
+            else if (callData.startsWith("target_")) {
+                Long targetId = Long.parseLong(callData.split("_")[1]);
+                SourceDraft draft = drafts.get(chatId);
+
+                if (draft != null) {
+                    botService.addSourceWithTarget(draft.getUrl(), draft.getName(), targetId);
+                    drafts.remove(chatId); // Чистим черновик
+
+                    editMessage(chatId, messageId, "✅ Источник <b>" + draft.getName() + "</b> успешно добавлен!", null);
+                } else {
+                    editMessage(chatId, messageId, "⚠️ Ошибка: данные устарели. Перешлите канал заново.", null);
+                }
             }
             return;
         }
@@ -95,7 +100,7 @@ public class NewsBot extends TelegramLongPollingBot {
                 if ("administrator".equals(status)) {
                     String targetChatId = String.valueOf(chatMember.getChat().getId());
                     String title = chatMember.getChat().getTitle();
-                    botService.addTargetChannel(targetChatId, title); // <-- Сервис
+                    botService.addTargetChannel(targetChatId, title);
                 }
             }
 
@@ -110,21 +115,38 @@ public class NewsBot extends TelegramLongPollingBot {
                     return;
                 }
 
-                // Вся логика сохранения и проверок теперь внутри addSource
-                // Это чище и надежнее
-                String result = botService.addSource(username, title);
-                sendText(chatId, result);
+                String url = "https://t.me/s/" + username;
+
+                if (botService.existsByUrl(url)) {
+                    sendText(chatId, "⚠️ Этот источник уже есть в базе.");
+                    return;
+                }
+
+                // СОЗДАЕМ ЧЕРНОВИК
+                SourceDraft draft = new SourceDraft();
+                draft.setUrl(url);
+                draft.setName(title);
+                drafts.put(chatId, draft);
+
+                // ПРЕДЛАГАЕМ ВЫБРАТЬ КАНАЛ
+                List<TargetChannel> channels = botService.getAllTargets();
+                if (channels.isEmpty()) {
+                    sendText(chatId, "⚠️ Нет целевых каналов! Добавь меня админом в свой канал сначала.");
+                } else {
+                    InlineKeyboardMarkup markup = keyboardService.getTargetChannelsKeyboard(channels);
+                    sendTextWithMarkup(chatId, "🔗 Источник: <b>" + title + "</b>\nКуда будем публиковать новости?", markup);
+                }
             }
 
-            // ОБРАБОТКА КОМАНД И КНОПОК МЕНЮ
+            // МЕНЮ
             if (message.hasText()) {
                 String text = message.getText();
 
                 if (text.equals("/start")) {
-                    sendMenu(chatId, "👋 Добро пожаловать в Панель Управления!\n\nИспользуй кнопки ниже для навигации.");
+                    sendMenu(chatId, "👋 Добро пожаловать в Панель Управления!");
                 }
                 else if (text.equals("📺 Мои Каналы")) {
-                    var sources = botService.getAllSources(); // <-- Сервис
+                    var sources = botService.getAllSources();
                     if (sources.isEmpty()) {
                         sendText(chatId, "Список источников пуст.");
                     } else {
@@ -148,50 +170,44 @@ public class NewsBot extends TelegramLongPollingBot {
         }
     }
 
-
-    // Метод для отправки сообщения с клавиатурой (МЕНЮ)
     public void sendMenu(long chatId, String text) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
         message.setText(text);
-
-        // Получаем клавиатуру из сервиса
         message.setReplyMarkup(keyboardService.getMainMenu());
-
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            log.error("Ошибка отправки меню: {}", e.getMessage());
-        }
+        try { execute(message); } catch (TelegramApiException e) { log.error("Error", e); }
     }
 
-    // Добавь этот метод в конец класса NewsBot
     private void editMessage(long chatId, int messageId, String text, InlineKeyboardMarkup markup) {
         EditMessageText edit = new EditMessageText();
         edit.setChatId(String.valueOf(chatId));
         edit.setMessageId(messageId);
         edit.setText(text);
-        edit.setParseMode("HTML"); // Чтобы работал жирный шрифт <b>
+        edit.setParseMode("HTML");
         edit.setReplyMarkup(markup);
-
-        try {
-            execute(edit);
-        } catch (TelegramApiException e) {
-            log.error("Ошибка редактирования сообщения: {}", e.getMessage());
-        }
+        try { execute(edit); } catch (TelegramApiException e) { log.error("Error", e); }
     }
-
-
 
     public void sendText(long chatId, String text) {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
         message.setText(text);
+        try { execute(message); } catch (TelegramApiException e) { log.error("Error", e); }
+    }
 
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            log.error("Ошибка отправки сообщения: {}", e.getMessage());
-        }
+    public void sendTextWithMarkup(long chatId, String text, InlineKeyboardMarkup markup) {
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        message.setText(text);
+        message.setParseMode("HTML");
+        message.setReplyMarkup(markup);
+        try { execute(message); } catch (TelegramApiException e) { log.error("Error", e); }
+    }
+
+    // Внутренний класс для черновика
+    @Data
+    private static class SourceDraft {
+        private String url;
+        private String name;
     }
 }

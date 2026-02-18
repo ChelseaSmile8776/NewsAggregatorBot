@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -42,28 +41,29 @@ public class BotService {
         return sourceRepository.findAll();
     }
 
-    // Метод добавления источника (возвращает текст ответа)
-    @Transactional
-    public String addSource(String username, String title) {
-        String url = "https://t.me/s/" + username;
+    @Transactional(readOnly = true)
+    public List<TargetChannel> getAllTargets() {
+        return targetChannelRepository.findAll();
+    }
 
-        if (sourceRepository.findByUrl(url).isPresent()) {
-            return "⚠️ Этот источник уже есть в базе.";
-        }
+    @Transactional(readOnly = true)
+    public boolean existsByUrl(String url) {
+        return sourceRepository.findByUrl(url).isPresent();
+    }
+
+    // Сохраняет новый источник с привязкой к КОНКРЕТНОМУ каналу
+    @Transactional
+    public void addSourceWithTarget(String url, String name, Long targetId) {
+        TargetChannel target = targetChannelRepository.findById(targetId)
+                .orElseThrow(() -> new RuntimeException("Target channel not found"));
 
         Source source = new Source();
         source.setUrl(url);
-        source.setName(title);
+        source.setName(name);
         source.setSystemPrompt("Ты новостной агрегатор.");
-
-        // Привязываем к первому попавшемуся каналу (пока что)
-        Optional<TargetChannel> defaultTarget = targetChannelRepository.findAll().stream().findFirst();
-        defaultTarget.ifPresent(source::setTargetChannel);
+        source.setTargetChannel(target);
 
         sourceRepository.save(source);
-
-        String targetName = defaultTarget.map(TargetChannel::getTitle).orElse("Нет целевых каналов!");
-        return "✅ Источник добавлен: " + title + "\nПривязан к каналу: " + targetName;
     }
 
     @Transactional
