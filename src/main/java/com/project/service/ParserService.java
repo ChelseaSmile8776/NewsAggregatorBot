@@ -27,7 +27,6 @@ public class ParserService {
         List<String> newPosts = new ArrayList<>();
 
         try {
-            // 1. Загружаем страницу
             Document doc = Jsoup.connect(source.getUrl()).get();
             Elements messages = doc.select(".tgme_widget_message");
 
@@ -36,14 +35,10 @@ public class ParserService {
                 return Collections.emptyList();
             }
 
-            // Определяем текущий последний ID (если null -> 0)
             int lastKnownId = (source.getLastPostId() == null) ? 0 : source.getLastPostId();
             int maxIdOnPage = lastKnownId;
-
-            // 🔥 ФЛАГ: Если это первый запуск (ID=0), то мы НЕ публикуем старые посты
             boolean isFirstRun = (lastKnownId == 0);
 
-            // 2. Проходим по сообщениям
             for (Element msg : messages) {
                 String dataPost = msg.attr("data-post");
                 if (dataPost.isEmpty()) continue;
@@ -55,20 +50,18 @@ public class ParserService {
                     continue;
                 }
 
-                // Если пост новее того, что мы знаем
                 if (postId > lastKnownId) {
-
-                    // Обновляем счетчик максимального ID на странице
                     if (postId > maxIdOnPage) {
                         maxIdOnPage = postId;
                     }
 
-                    // 🔥 Если это НЕ первый запуск — собираем посты для публикации
                     if (!isFirstRun) {
                         Element textElement = msg.selectFirst(".tgme_widget_message_text");
                         if (textElement != null) {
                             String rawText = textElement.text();
-                            if (rawText.length() > 50) {
+
+                            // Фильтр по длине и стоп-словам
+                            if (rawText.length() > 50 && !isAd(rawText)) {
                                 newPosts.add(rawText);
                             }
                         }
@@ -76,12 +69,10 @@ public class ParserService {
                 }
             }
 
-            // 3. Сохраняем новый lastPostId в базу
             if (maxIdOnPage > lastKnownId) {
                 updateLastPostId(source.getId(), maxIdOnPage);
-
                 if (isFirstRun) {
-                    log.info("🏁 Первый запуск для {}. Пропускаем публикацию, запомнили ID: {}", source.getName(), maxIdOnPage);
+                    log.info("🏁 Первый запуск для {}. Пропускаем публикацию.", source.getName());
                 }
             }
 
@@ -90,6 +81,20 @@ public class ParserService {
         }
 
         return newPosts;
+    }
+
+    // Простейший фильтр рекламы
+    private boolean isAd(String text) {
+        String lower = text.toLowerCase();
+        return lower.contains("подписывайтесь") ||
+                lower.contains("читать далее") ||
+                lower.contains("erid:") ||
+                lower.contains("реклама") ||
+                lower.contains("ставки") ||
+                lower.contains("казино") ||
+                lower.contains("melbet") ||
+                lower.contains("1xbet") ||
+                lower.contains("выигрыш");
     }
 
     @Transactional

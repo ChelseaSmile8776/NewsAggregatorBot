@@ -25,11 +25,7 @@ public class OpenAIService {
     private final RestTemplate restTemplate = new RestTemplate();
 
     public String summarize(String text, String systemPrompt) {
-        // Проверка на случай если ключа нет
-        if (apiKey == null || apiKey.isEmpty()) {
-            log.error("API Key OpenAI не найден!");
-            return null;
-        }
+        if (apiKey == null || apiKey.isEmpty()) return null;
 
         String url = "https://api.openai.com/v1/chat/completions";
 
@@ -42,11 +38,13 @@ public class OpenAIService {
 
         List<Map<String, String>> messages = List.of(
                 Map.of("role", "system", "content", systemPrompt),
-                Map.of("role", "user", "content", "Сделай выжимку этой новости (главное суть, без воды, добавь эмодзи):\n" + text)
+                Map.of("role", "user", "content",
+                        "Проанализируй текст. Если это реклама, спам, розыгрыш, ставки или приглашение подписаться на другой канал — верни строго одно слово: SKIP.\n" +
+                                "Если это нормальная новость — сделай качественный рерайт (суть, эмодзи, хештеги).\n\n" +
+                                "Текст новости:\n" + text)
         );
 
         body.put("messages", messages);
-
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
 
         try {
@@ -61,10 +59,9 @@ public class OpenAIService {
                 }
             }
             return null;
-
         } catch (Exception e) {
             log.error("Ошибка OpenAI: {}", e.getMessage());
-            return null; // Возвращаем null, чтобы не постить ошибку в канал
+            return null;
         }
     }
 }
