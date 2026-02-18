@@ -38,7 +38,9 @@ public class ParserService {
                 return Collections.emptyList();
             }
 
-            int maxIdOnPage = source.getLastPostId();
+            // Безопасно получаем текущий ID (если null -> 0)
+            int lastKnownId = (source.getLastPostId() == null) ? 0 : source.getLastPostId();
+            int maxIdOnPage = lastKnownId;
 
             // 3. Проходим по сообщениям
             for (Element msg : messages) {
@@ -46,10 +48,21 @@ public class ParserService {
                 String dataPost = msg.attr("data-post"); // "channelname/123"
                 if (dataPost.isEmpty()) continue;
 
-                int postId = Integer.parseInt(dataPost.split("/")[1]);
+                // Парсим ID поста
+                int postId;
+                try {
+                    postId = Integer.parseInt(dataPost.split("/")[1]);
+                } catch (Exception e) {
+                    continue; // Пропускаем кривые посты
+                }
 
                 // Если пост НОВЕЕ, чем тот, что мы уже видели
-                if (postId > source.getLastPostId()) {
+                if (postId > lastKnownId) {
+
+                    // Обновляем счетчик максимального ID, который мы видели на странице
+                    if (postId > maxIdOnPage) {
+                        maxIdOnPage = postId;
+                    }
 
                     // Ищем текст внутри (класс tgme_widget_message_text)
                     Element textElement = msg.selectFirst(".tgme_widget_message_text");
@@ -63,16 +76,11 @@ public class ParserService {
                             newPosts.add(rawText);
                         }
                     }
-
-                    // Обновляем счетчик максимального ID, который мы видели
-                    if (postId > maxIdOnPage) {
-                        maxIdOnPage = postId;
-                    }
                 }
             }
 
             // 4. Сохраняем новый lastPostId в базу, чтобы в следующий раз не брать эти посты
-            if (maxIdOnPage > source.getLastPostId()) {
+            if (maxIdOnPage > lastKnownId) {
                 updateLastPostId(source.getId(), maxIdOnPage);
             }
 
