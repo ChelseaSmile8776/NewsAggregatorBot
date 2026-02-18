@@ -62,6 +62,14 @@ public class CollectorService {
 
         String lastPostText = posts.last().text();
 
+// --- ДОБАВЬ ЭТУ ПРОВЕРКУ ---
+        if (lastPostText == null || lastPostText.trim().isEmpty()) {
+            log.info("Пост пустой (или только картинка), пропускаем.");
+            return;
+        }
+// ----------------------------
+
+
         // --- ЗАЩИТА ОТ ДУБЛЕЙ ---
         // Создаем уникальный ID новости (хэш текста + название канала)
         String uniqueId = String.valueOf((channel.getName() + lastPostText).hashCode());
