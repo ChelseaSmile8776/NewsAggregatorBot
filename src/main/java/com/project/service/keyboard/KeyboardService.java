@@ -1,7 +1,10 @@
 package com.project.service.keyboard;
 
+import com.project.entity.Source;
 import org.springframework.stereotype.Service;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 
 import java.util.ArrayList;
@@ -10,27 +13,74 @@ import java.util.List;
 @Service
 public class KeyboardService {
 
+    // ГЛАВНОЕ МЕНЮ (внизу экрана)
     public ReplyKeyboardMarkup getMainMenu() {
         ReplyKeyboardMarkup markup = new ReplyKeyboardMarkup();
-        markup.setResizeKeyboard(true); // Кнопки компактные
+        markup.setResizeKeyboard(true);
         markup.setSelective(true);
         markup.setOneTimeKeyboard(false);
 
         List<KeyboardRow> keyboard = new ArrayList<>();
 
-        // 1 ряд
         KeyboardRow row1 = new KeyboardRow();
         row1.add("📺 Мои Каналы");
         row1.add("📢 Сделать Пост");
         keyboard.add(row1);
 
-        // 2 ряд
         KeyboardRow row2 = new KeyboardRow();
         row2.add("👥 Пользователи");
         row2.add("⚙️ Настройки");
         keyboard.add(row2);
 
         markup.setKeyboard(keyboard);
+        return markup;
+    }
+
+    // СПИСОК ИСТОЧНИКОВ (Inline-кнопки под сообщением)
+    public InlineKeyboardMarkup getSourcesListKeyboard(List<Source> sources) {
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        for (Source source : sources) {
+            List<InlineKeyboardButton> row = new ArrayList<>();
+            InlineKeyboardButton button = new InlineKeyboardButton();
+
+            // Текст: Название источника
+            button.setText(source.getName());
+            // Callback: "source_ID"
+            button.setCallbackData("source_" + source.getId());
+
+            row.add(button);
+            rows.add(row);
+        }
+
+        markup.setKeyboard(rows);
+        return markup;
+    }
+
+    // МЕНЮ УПРАВЛЕНИЯ ИСТОЧНИКОМ (Удалить / Назад)
+    public InlineKeyboardMarkup getSourceControlKeyboard(Long sourceId) {
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        List<InlineKeyboardButton> row1 = new ArrayList<>();
+
+        InlineKeyboardButton deleteBtn = new InlineKeyboardButton();
+        deleteBtn.setText("🗑 Удалить");
+        deleteBtn.setCallbackData("delete_" + sourceId);
+
+        row1.add(deleteBtn);
+        rows.add(row1);
+
+        List<InlineKeyboardButton> row2 = new ArrayList<>();
+        InlineKeyboardButton backBtn = new InlineKeyboardButton();
+        backBtn.setText("🔙 Назад к списку");
+        backBtn.setCallbackData("back_to_list");
+
+        row2.add(backBtn);
+        rows.add(row2);
+
+        markup.setKeyboard(rows);
         return markup;
     }
 }

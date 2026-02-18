@@ -10,7 +10,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.util.Optional;
@@ -41,28 +43,67 @@ public class NewsBot extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        // Логика добавления ЦЕЛЕВОГО канала (куда постим)
-        if (update.hasMyChatMember()) {
-            var chatMember = update.getMyChatMember();
-            String status = chatMember.getNewChatMember().getStatus();
+        // --- 1. ОБРАБОТКА НАЖАТИЙ НА INLINE-КНОПКИ ---
+        if (update.hasCallbackQuery()) {
+            String callData = update.getCallbackQuery().getData();
+            long chatId = update.getCallbackQuery().getMessage().getChatId();
+            int messageId = update.getCallbackQuery().getMessage().getMessageId();
 
-            if ("administrator".equals(status)) {
-                String chatId = String.valueOf(chatMember.getChat().getId());
-                String title = chatMember.getChat().getTitle();
+            if (callData.startsWith("source_")) {
+                // Нажали на название источника -> Показываем детальное меню
+                Long sourceId = Long.parseLong(callData.split("_")[1]);
+                var sourceOpt = sourceRepository.findById(sourceId);
 
-                if (targetChannelRepository.findByTelegramId(chatId).isEmpty()) {
-                    TargetChannel target = new TargetChannel();
-                    target.setTelegramId(chatId);
-                    target.setTitle(title);
-                    targetChannelRepository.save(target);
-                    log.info("Новый целевой канал добавлен: {} ({})", title, chatId);
+                if (sourceOpt.isPresent()) {
+                    Source s = sourceOpt.get();
+                    String text = "📡 <b>Источник:</b> " + s.getName() + "\n" +
+                            "🔗 Ссылка: " + s.getUrl() + "\n" +
+                            "🎯 Целевой канал: " + (s.getTargetChannel() != null ? s.getTargetChannel().getTitle() : "Нет");
+
+                    // Редактируем сообщение: меняем список на инфо об источнике
+                    editMessage(chatId, messageId, text, keyboardService.getSourceControlKeyboard(sourceId));
                 }
             }
+            else if (callData.startsWith("delete_")) {
+                // Удаляем источник
+                Long sourceId = Long.parseLong(callData.split("_")[1]);
+                sourceRepository.deleteById(sourceId);
+
+                // Возвращаемся к списку (обновленному)
+                var sources = sourceRepository.findAll();
+                editMessage(chatId, messageId, "✅ Источник удален.\nВыберите источник:", keyboardService.getSourcesListKeyboard(sources));
+            }
+            else if (callData.equals("back_to_list")) {
+                // Возвращаемся к списку
+                var sources = sourceRepository.findAll();
+                editMessage(chatId, messageId, "📺 Ваши источники:", keyboardService.getSourcesListKeyboard(sources));
+            }
+            return; // Завершаем обработку колбэка
         }
 
+        // --- 2. ОБРАБОТКА СООБЩЕНИЙ ---
         if (update.hasMessage()) {
             var message = update.getMessage();
             long chatId = message.getChatId();
+
+            // Логика добавления ЦЕЛЕВОГО канала (бота добавили админом)
+            if (update.hasMyChatMember()) {
+                var chatMember = update.getMyChatMember();
+                String status = chatMember.getNewChatMember().getStatus();
+
+                if ("administrator".equals(status)) {
+                    String targetChatId = String.valueOf(chatMember.getChat().getId());
+                    String title = chatMember.getChat().getTitle();
+
+                    if (targetChannelRepository.findByTelegramId(targetChatId).isEmpty()) {
+                        TargetChannel target = new TargetChannel();
+                        target.setTelegramId(targetChatId);
+                        target.setTitle(title);
+                        targetChannelRepository.save(target);
+                        log.info("Новый целевой канал добавлен: {} ({})", title, targetChatId);
+                    }
+                }
+            }
 
             // Логика добавления ИСТОЧНИКА (пересылка)
             if (message.getForwardFromChat() != null) {
@@ -75,9 +116,9 @@ public class NewsBot extends TelegramLongPollingBot {
                     return;
                 }
 
-                String url = "https://t.me/s/" + username; // <-- Сразу ставим /s/ для парсинга
+                String url = "https://t.me/s/" + username;
 
-                boolean exists = sourceRepository.findByUrl(url).isPresent(); // Используем метод репозитория
+                boolean exists = sourceRepository.findByUrl(url).isPresent();
 
                 if (!exists) {
                     Source source = new Source();
@@ -107,9 +148,12 @@ public class NewsBot extends TelegramLongPollingBot {
                     if (sources.isEmpty()) {
                         sendText(chatId, "Список источников пуст.");
                     } else {
-                        StringBuilder sb = new StringBuilder("📋 Твои источники:\n");
-                        sources.forEach(s -> sb.append("🔹 ").append(s.getName()).append("\n   (").append(s.getUrl()).append(")\n"));
-                        sendText(chatId, sb.toString());
+                        // Шлем сообщение с INLINE-КНОПКАМИ
+                        SendMessage msg = new SendMessage();
+                        msg.setChatId(String.valueOf(chatId));
+                        msg.setText("Выберите источник для управления:");
+                        msg.setReplyMarkup(keyboardService.getSourcesListKeyboard(sources));
+                        try { execute(msg); } catch (Exception e) {}
                     }
                 }
                 else if (text.equals("📢 Сделать Пост")) {
@@ -121,12 +165,10 @@ public class NewsBot extends TelegramLongPollingBot {
                 else if (text.equals("⚙️ Настройки")) {
                     sendText(chatId, "Настройки пока недоступны.");
                 }
-                else if (text.equals("/list")) { // Оставим старую команду на всякий случай
-                    sendText(chatId, "Используй кнопку '📺 Мои Каналы'!");
-                }
             }
         }
     }
+
 
     // Метод для отправки сообщения с клавиатурой (МЕНЮ)
     public void sendMenu(long chatId, String text) {
@@ -143,6 +185,23 @@ public class NewsBot extends TelegramLongPollingBot {
             log.error("Ошибка отправки меню: {}", e.getMessage());
         }
     }
+
+    // Добавь этот метод в конец класса NewsBot
+    private void editMessage(long chatId, int messageId, String text, InlineKeyboardMarkup markup) {
+        EditMessageText edit = new EditMessageText();
+        edit.setChatId(String.valueOf(chatId));
+        edit.setMessageId(messageId);
+        edit.setText(text);
+        edit.setParseMode("HTML"); // Чтобы работал жирный шрифт <b>
+        edit.setReplyMarkup(markup);
+
+        try {
+            execute(edit);
+        } catch (TelegramApiException e) {
+            log.error("Ошибка редактирования сообщения: {}", e.getMessage());
+        }
+    }
+
 
 
     public void sendText(long chatId, String text) {
