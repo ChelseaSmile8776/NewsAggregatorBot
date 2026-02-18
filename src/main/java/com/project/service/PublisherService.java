@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional; // <-- Не забываем транзакции
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,8 +22,9 @@ public class PublisherService {
 
     // Проверяем очередь каждую минуту
     @Scheduled(fixedRate = 60000)
+    @Transactional // <-- ВАЖНО: Держим сессию для подгрузки TargetChannel
     public void publishPosts() {
-        // Берем посты со статусом PENDING (ожидают отправки) и временем <= сейчас
+        // Берем посты со статусом PENDING и временем <= сейчас
         List<PostQueue> posts = postQueueRepository.findAllByStatusAndScheduledTimeBefore(
                 PostQueue.Status.PENDING, LocalDateTime.now()
         );
@@ -33,17 +35,23 @@ public class PublisherService {
 
         for (PostQueue post : posts) {
             try {
-                // Отправляем тебе (ID пока жестко задан, но можно брать из базы User)
-                newsBot.sendText(508490900L, post.getContent());
+                // <-- ИЗМЕНЕНИЕ: Берем ID канала из объекта TargetChannel
+                String targetChatId = post.getTargetChannel().getTelegramId();
+                String targetTitle = post.getTargetChannel().getTitle();
 
-                // Меняем статус на PUBLISHED
+                log.info("Отправляю пост в канал '{}' (ID: {})", targetTitle, targetChatId);
+
+                // Отправляем в НУЖНЫЙ канал
+                newsBot.sendText(Long.parseLong(targetChatId), post.getContent());
+
+                // Меняем статус на SENT
                 post.setStatus(PostQueue.Status.SENT);
                 postQueueRepository.save(post);
 
-                log.info("Пост отправлен!");
+                log.info("Пост успешно отправлен в канал '{}'!", targetTitle);
 
             } catch (Exception e) {
-                log.error("Ошибка публикации: {}", e.getMessage());
+                log.error("Ошибка публикации поста id={} в канал {}: {}", post.getId(), post.getTargetChannel().getTitle(), e.getMessage());
                 post.setStatus(PostQueue.Status.ERROR);
                 postQueueRepository.save(post);
             }
