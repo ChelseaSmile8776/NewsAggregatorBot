@@ -31,41 +31,47 @@ public class NewsBot extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        if (update.hasMessage() && update.getMessage().hasText()) {
-            String text = update.getMessage().getText();
-            long chatId = update.getMessage().getChatId();
+        if (update.hasMessage()) {
+            var message = update.getMessage();
+            long chatId = message.getChatId();
 
-            if (text.equals("/start")) {
-                sendText(chatId, "Привет! Я бот-агрегатор.\nДобавь канал: /add_channel <ID> <Имя>");
-            }
+            // 1. Если это пересланное сообщение из КАНАЛА
+            if (message.getForwardFromChat() != null) {
+                var channelChat = message.getForwardFromChat();
+                String channelId = String.valueOf(channelChat.getId());
+                String channelName = channelChat.getTitle();
 
-            // 3. ВОТ СЮДА ПИХАЕМ ЛОГИКУ СОХРАНЕНИЯ
-            else if (text.startsWith("/add_channel")) {
-                String[] parts = text.split(" ", 3); // Делим сообщение на 3 части
+                // Проверяем, есть ли уже такой канал
+                if (channelRepository.findByChannelId(channelId).isEmpty()) {
+                    Channel channel = new Channel();
+                    channel.setChannelId(channelId);
+                    channel.setName(channelName);
+                    channel.setSystemPrompt("Ты новостной агрегатор.");
+                    channelRepository.save(channel);
 
-                if (parts.length < 3) {
-                    sendText(chatId, "Ошибка! Формат: /add_channel <ID> <Имя>");
-                    return;
+                    sendText(chatId, "✅ Канал добавлен!\nНазвание: " + channelName + "\nID: " + channelId);
+                } else {
+                    sendText(chatId, "⚠️ Этот канал уже добавлен.");
                 }
-
-                String channelId = parts[1];
-                String name = parts[2];
-
-                // --- НАЧАЛО ВСТАВКИ ---
-                Channel channel = new Channel();
-                channel.setChannelId(channelId); // ID канала (например, -100123456)
-                channel.setName(name);           // Имя (например, "CryptoNews")
-                channel.setSystemPrompt("Ты новостной агрегатор. Сделай краткую выжимку."); // Дефолтный промпт
-                channel.setSignature("С уважением, бот."); // Дефолтная подпись
-
-                channelRepository.save(channel); // Сохраняем в базу!
-                // --- КОНЕЦ ВСТАВКИ ---
-
-                sendText(chatId, "Канал " + name + " успешно добавлен!");
+                return;
             }
 
-            else {
-                sendText(chatId, "Я не знаю такую команду.");
+            // 2. Обычные команды
+            if (message.hasText()) {
+                String text = message.getText();
+
+                if (text.equals("/start")) {
+                    sendText(chatId, "Привет! Перешли мне любой пост из канала, чтобы добавить его в базу.");
+                } else if (text.equals("/list")) {
+                    var channels = channelRepository.findAll();
+                    if (channels.isEmpty()) {
+                        sendText(chatId, "Список пуст.");
+                    } else {
+                        StringBuilder sb = new StringBuilder("📋 Твои каналы:\n");
+                        channels.forEach(c -> sb.append(c.getName()).append(" (ID: ").append(c.getChannelId()).append(")\n"));
+                        sendText(chatId, sb.toString());
+                    }
+                }
             }
         }
     }
@@ -81,4 +87,5 @@ public class NewsBot extends TelegramLongPollingBot {
             log.error("Ошибка отправки сообщения: {}", e.getMessage());
         }
     }
+
 }
