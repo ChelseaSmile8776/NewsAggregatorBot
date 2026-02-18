@@ -58,6 +58,10 @@ public class CollectorService {
             return;
         }
 
+        if (!url.contains("/s/")) {
+            url = url.replace("t.me/", "t.me/s/");
+        }
+
         TargetChannel targetChannel = source.getTargetChannel();
         if (targetChannel == null) {
             log.warn("Источник {} не привязан ни к одному каналу! Пропускаем.", source.getName());
