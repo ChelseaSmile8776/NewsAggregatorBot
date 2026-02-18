@@ -7,7 +7,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional; // <-- Не забываем транзакции
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,14 +21,13 @@ public class PublisherService {
     private final PostQueueRepository postQueueRepository;
     private final NewsBot newsBot;
 
-    // Проверяем очередь каждую минуту
+    // Запускаем каждую минуту
     @Scheduled(fixedRate = 60000)
-    @Transactional // <-- ВАЖНО: Держим сессию для подгрузки TargetChannel
     public void publishPosts() {
-        // Берем посты со статусом PENDING и временем <= сейчас
-        List<PostQueue> posts = postQueueRepository.findAllByStatusAndScheduledTimeBefore(
-                PostQueue.Status.PENDING, LocalDateTime.now()
-        );
+        // 1. Находим посты (БЕЗ транзакции, просто SELECT)
+        // Но чтобы подгрузить TargetChannel, нам, возможно, понадобится транзакция при чтении.
+        // Поэтому лучше сделать так:
+        List<PostQueue> posts = findPendingPosts();
 
         if (posts.isEmpty()) return;
 
@@ -35,26 +35,41 @@ public class PublisherService {
 
         for (PostQueue post : posts) {
             try {
-                // <-- ИЗМЕНЕНИЕ: Берем ID канала из объекта TargetChannel
-                String targetChatId = post.getTargetChannel().getTelegramId();
-                String targetTitle = post.getTargetChannel().getTitle();
-
-                log.info("Отправляю пост в канал '{}' (ID: {})", targetTitle, targetChatId);
-
-                // Отправляем в НУЖНЫЙ канал
-                newsBot.sendText(Long.parseLong(targetChatId), post.getContent());
-
-                // Меняем статус на SENT
-                post.setStatus(PostQueue.Status.SENT);
-                postQueueRepository.save(post);
-
-                log.info("Пост успешно отправлен в канал '{}'!", targetTitle);
-
+                processSinglePost(post); // 2. Обрабатываем каждый пост отдельно
             } catch (Exception e) {
-                log.error("Ошибка публикации поста id={} в канал {}: {}", post.getId(), post.getTargetChannel().getTitle(), e.getMessage());
-                post.setStatus(PostQueue.Status.ERROR);
-                postQueueRepository.save(post);
+                log.error("Критическая ошибка при обработке поста {}: {}", post.getId(), e.getMessage());
             }
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<PostQueue> findPendingPosts() {
+        return postQueueRepository.findAllByStatusAndScheduledTimeBefore(
+                PostQueue.Status.PENDING, LocalDateTime.now()
+        );
+    }
+
+    // Этот метод выполняется в СВОЕЙ транзакции. Даже если упадет, остальные посты не пострадают.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void processSinglePost(PostQueue post) {
+        try {
+            // Подгружаем данные (они уже должны быть в кэше или подгрузятся в транзакции)
+            String targetChatId = post.getTargetChannel().getTelegramId();
+            String targetTitle = post.getTargetChannel().getTitle();
+
+            log.info("Отправляю пост в канал '{}' (ID: {})", targetTitle, targetChatId);
+
+            newsBot.sendText(Long.parseLong(targetChatId), post.getContent());
+
+            post.setStatus(PostQueue.Status.SENT);
+            postQueueRepository.saveAndFlush(post); // Сохраняем немедленно!
+
+            log.info("Пост успешно отправлен в канал '{}'!", targetTitle);
+
+        } catch (Exception e) {
+            log.error("Ошибка публикации поста id={}: {}", post.getId(), e.getMessage());
+            post.setStatus(PostQueue.Status.ERROR);
+            postQueueRepository.saveAndFlush(post); // Сохраняем ошибку немедленно
         }
     }
 }
