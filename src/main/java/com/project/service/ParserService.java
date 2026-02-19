@@ -63,15 +63,30 @@ public class ParserService {
                     if (postId > maxIdOnPage) maxIdOnPage = postId;
 
                     if (!isFirstRun) {
-                        // 1. Извлекаем текст
                         Element textElement = msg.selectFirst(".tgme_widget_message_text");
-
-                        // 2. Извлекаем картинку
                         String imageUrl = null;
+
+                        // 1. Обычное фото (single photo)
                         Element photoElement = msg.selectFirst(".tgme_widget_message_photo_wrap");
                         if (photoElement != null) {
-                            String style = photoElement.attr("style");
-                            imageUrl = extractUrlFromStyle(style);
+                            imageUrl = extractUrlFromStyle(photoElement.attr("style"));
+                        }
+
+                        // 2. Если нет фото, ищем ВИДЕО (берем превью)
+                        if (imageUrl == null) {
+                            Element videoElement = msg.selectFirst("video");
+                            if (videoElement != null) {
+                                // У видео часто есть атрибут poster="url"
+                                imageUrl = videoElement.attr("poster");
+                            }
+                        }
+
+                        // 3. Если нет, ищем ГРУППУ фото (берем первую)
+                        if (imageUrl == null) {
+                            Element groupPhoto = msg.selectFirst(".tgme_widget_message_grouped_layer");
+                            if (groupPhoto != null) {
+                                imageUrl = extractUrlFromStyle(groupPhoto.attr("style"));
+                            }
                         }
 
                         if (textElement != null) {
@@ -81,7 +96,7 @@ public class ParserService {
                             if (rawText.length() > 50 && !isAd(rawText)) {
                                 ParsedPost post = new ParsedPost();
                                 post.setText(rawText);
-                                post.setImageUrl(imageUrl);
+                                post.setImageUrl(imageUrl); // Теперь тут может быть превью видео
                                 newPosts.add(post);
                             }
                         }
@@ -104,7 +119,7 @@ public class ParserService {
     }
 
     private String extractUrlFromStyle(String style) {
-        // FIXED REGEX: double backslash needed for Java string escaping
+        // Правильная регулярка с экранированием для Java
         Pattern pattern = Pattern.compile("url\\('?(.*?)'?\\)");
         Matcher matcher = pattern.matcher(style);
         if (matcher.find()) {

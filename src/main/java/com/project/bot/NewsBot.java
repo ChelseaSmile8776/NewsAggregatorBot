@@ -222,13 +222,22 @@ public class NewsBot extends TelegramLongPollingBot {
         SendPhoto photo = new SendPhoto();
         photo.setChatId(String.valueOf(chatId));
         photo.setPhoto(new InputFile(imageUrl));
+
+        // Обрезаем подпись, если она слишком длинная (лимит Telegram 1024 символа для фото)
+        if (caption.length() > 1024) {
+            caption = caption.substring(0, 1021) + "...";
+        }
         photo.setCaption(caption);
+
+        // ВАЖНО: Включаем HTML
         photo.setParseMode("HTML");
 
         try {
             execute(photo);
         } catch (TelegramApiException e) {
             log.error("Ошибка отправки фото: {}", e.getMessage());
+            // Если фото не отправилось (битая ссылка), пробуем отправить просто текст
+            sendText(chatId, caption);
         }
     }
 
@@ -256,8 +265,17 @@ public class NewsBot extends TelegramLongPollingBot {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
         message.setText(text);
-        try { execute(message); } catch (TelegramApiException e) { log.error("Error", e); }
+
+        // ВАЖНО: Включаем HTML, чтобы работали теги <b> и <i>
+        message.setParseMode("HTML");
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            log.error("Error sending text", e);
+        }
     }
+
 
     public void sendTextWithMarkup(long chatId, String text, InlineKeyboardMarkup markup) {
         SendMessage message = new SendMessage();
