@@ -254,43 +254,52 @@ public class NewsBot extends TelegramLongPollingBot {
     // --- НОВЫЙ МЕТОД ДЛЯ ВИДЕО ---
     public void sendVideo(long chatId, String videoUrl, String caption) {
         try {
-            log.info("🎥 Скачиваю и отправляю видео: {}", videoUrl);
+            log.info("🎥 Скачиваю ВИДЕО ПОЛНОСТЬЮ: {}", videoUrl);
 
+            // 1. Скачиваем ВСЁ видео в память/файл
             URL url = new URL(videoUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(60000); // Тайм-аут побольше для видео
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(120000); // 2 минуты на БОЛЬШОЕ видео
             conn.connect();
 
             if (conn.getResponseCode() == 200) {
                 try (InputStream inputStream = conn.getInputStream()) {
+                    // 2. Создаём SendVideo с InputStream
                     SendVideo video = new SendVideo();
                     video.setChatId(String.valueOf(chatId));
-                    video.setVideo(new InputFile(inputStream, "video.mp4"));
 
+                    // КЛЮЧЕВОЕ: filename с .mp4 ОБЯЗАТЕЛЬНО!
+                    InputFile videoFile = new InputFile(inputStream, "video_" + System.currentTimeMillis() + ".mp4");
+                    video.setVideo(videoFile);
+
+                    // 3. Обрезаем caption
                     if (caption.length() > 1024) {
                         caption = caption.substring(0, 1021) + "...";
                     }
                     video.setCaption(caption);
                     video.setParseMode("HTML");
 
+                    // 4. ✅ Telegram сам сделает превью + плеер
+                    video.setSupportsStreaming(true);
+
                     execute(video);
-                    log.info("✅ Видео отправлено ({})", videoUrl);
+                    log.info("✅ ✅ ВИДЕО ОТПРАВЛЕНО ПОЛНОСТЬЮ! ({})", videoUrl);
                     return;
                 }
             } else {
-                log.warn("❌ HTTP {} для видео {}", conn.getResponseCode(), videoUrl);
+                log.warn("❌ HTTP {} для видео: {}", conn.getResponseCode(), videoUrl);
             }
-
         } catch (Exception e) {
-            log.error("❌ Ошибка sendVideo: {}", e.getMessage());
+            log.error("❌ Ошибка sendVideo {}: {}", videoUrl, e.getMessage(), e);
         }
 
-        // Фоллбэк: если видео не прошло, пробуем отправить текст
+        // Фоллбэк: текст
         log.info("📝 Фоллбэк видео -> текст");
         sendText(chatId, caption);
     }
+
 
     // --- ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ---
 
