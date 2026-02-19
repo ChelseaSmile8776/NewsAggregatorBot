@@ -47,11 +47,19 @@ public class NewsScheduler {
                             ? source.getSystemPrompt()
                             : "Ты редактор Telegram-канала.";
 
-                    // Рерайтим
+                    // Рерайтим через AI
                     String summary = openAiService.summarize(post.getText(), systemPrompt);
 
-                    if (summary != null && !summary.contains("SKIP")) {
-                        // СОХРАНЯЕМ В ОЧЕРЕДЬ
+                    if (summary != null) {
+                        // --- УСИЛЕННАЯ ПРОВЕРКА SKIP ---
+                        String cleanSummary = summary.trim().toUpperCase();
+
+                        if (cleanSummary.contains("SKIP")) {
+                            log.info("🚫 Отсеяно (реклама/спам): {}", source.getName());
+                            continue; // Пропускаем сохранение
+                        }
+
+                        // Если не SKIP - сохраняем в очередь
                         PostQueue queueItem = new PostQueue();
                         queueItem.setContent(summary);
                         queueItem.setImageUrl(post.getImageUrl()); // Сохраняем URL картинки
@@ -61,8 +69,6 @@ public class NewsScheduler {
 
                         postQueueRepository.save(queueItem);
                         log.info("📥 Добавлено в очередь: {}", source.getName());
-                    } else {
-                        log.info("🚫 Отсеяно (реклама/спам): {}", source.getName());
                     }
                 }
             } catch (Exception e) {
