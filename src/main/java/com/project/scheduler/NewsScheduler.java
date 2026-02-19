@@ -12,7 +12,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
 @RequiredArgsConstructor
@@ -24,55 +28,82 @@ public class NewsScheduler {
     private final OpenAIService openAiService;
     private final PostQueueRepository postQueueRepository;
 
+    // защита от параллельного запуска (если один цикл дольше delay)
+    private final AtomicBoolean running = new AtomicBoolean(false);
+
     @Scheduled(fixedDelayString = "${scheduler.delay:900000}")
     public void processNews() {
-        log.info("⏳ Запуск проверки новостей...");
+        if (!running.compareAndSet(false, true)) {
+            log.warn("⛔ processNews уже выполняется, пропускаю этот запуск");
+            return;
+        }
 
-        List<Source> sources = botService.getAllSources();
+        try {
+            log.info("⏳ Запуск проверки новостей...");
 
-        for (Source source : sources) {
-            if (source.getTargetChannel() == null) continue;
+            List<Source> sources = botService.getAllSources();
 
-            try {
-                List<ParserService.ParsedPost> newPosts = parserService.parseNewPosts(source);
+            for (Source source : sources) {
+                if (source.getTargetChannel() == null) continue;
 
-                if (newPosts.isEmpty()) continue;
+                try {
+                    // ВАЖНО: parseNewPosts сам берет source из БД и двигает lastPostId
+                    List<ParserService.ParsedPost> newPosts = parserService.parseNewPosts(source);
 
-                log.info("🔥 Найдено {} постов в '{}'", newPosts.size(), source.getName());
+                    if (newPosts.isEmpty()) continue;
 
-                for (ParserService.ParsedPost parsedPost : newPosts) {
+                    log.info("🔥 Найдено {} постов в '{}'", newPosts.size(), source.getName());
 
-                    String systemPrompt = source.getSystemPrompt() != null && !source.getSystemPrompt().isEmpty()
-                            ? source.getSystemPrompt()
-                            : "Ты редактор Telegram-канала.";
+                    // анти-дубликат в пределах одного запуска (на всякий)
+                    Set<Integer> seenPostIds = new HashSet<>();
 
-                    String summary = openAiService.summarize(parsedPost.getText(), systemPrompt);
+                    LocalDateTime baseTime = LocalDateTime.now();
+                    int secOffset = 0;
 
-                    if (summary != null && !summary.trim().isEmpty()) {
-                        String cleanSummary = summary.trim().toUpperCase();
+                    for (ParserService.ParsedPost parsedPost : newPosts) {
+                        if (!seenPostIds.add(parsedPost.getPostId())) {
+                            continue;
+                        }
 
-                        if (cleanSummary.contains("SKIP")) {
-                            log.info("🚫 Отсеяно (реклама/спам): {}", source.getName());
+                        String systemPrompt = (source.getSystemPrompt() != null && !source.getSystemPrompt().isEmpty())
+                                ? source.getSystemPrompt()
+                                : "Ты редактор Telegram-канала.";
+
+                        String summary = openAiService.summarize(parsedPost.getText(), systemPrompt);
+                        if (summary == null || summary.trim().isEmpty()) {
+                            continue;
+                        }
+
+                        String upper = summary.trim().toUpperCase(Locale.ROOT);
+                        if (upper.contains("SKIP")) {
+                            log.info("🚫 Отсеяно (реклама/спам): {} (postId={})", source.getName(), parsedPost.getPostId());
                             continue;
                         }
 
                         PostQueue queueItem = new PostQueue();
-                        queueItem.setContent(summary);
+                        queueItem.setContent(summary.trim());
                         queueItem.setImageUrl(parsedPost.getImageUrl());
                         queueItem.setTargetChannel(source.getTargetChannel());
                         queueItem.setPriority(1);
                         queueItem.setStatus(PostQueue.Status.PENDING);
-                        queueItem.setScheduledTime(LocalDateTime.now());
+
+                        // Чтобы порядок в очереди был стабильный (и не было одинакового scheduledTime)
+                        queueItem.setScheduledTime(baseTime.plusSeconds(secOffset++));
 
                         postQueueRepository.save(queueItem);
 
-                        log.info("📥 Добавлено в очередь: {} (image={})", source.getName(), parsedPost.getImageUrl());
+                        log.info("📥 Добавлено в очередь: {} (postId={}, image={})",
+                                source.getName(), parsedPost.getPostId(), parsedPost.getImageUrl());
                     }
+
+                } catch (Exception e) {
+                    log.error("❌ Ошибка {}: {}", source.getName(), e.getMessage(), e);
                 }
-            } catch (Exception e) {
-                log.error("❌ Ошибка {}: {}", source.getName(), e.getMessage());
             }
+
+            log.info("✅ Цикл проверки завершен.");
+        } finally {
+            running.set(false);
         }
-        log.info("✅ Цикл проверки завершен.");
     }
 }
