@@ -39,17 +39,20 @@ public class PublisherService {
             // 🔥 ОЧИСТКА ОТ <br> и прочего мусора
             String cleanContent = cleanHtml(post.getContent());
 
-            if (post.getImageUrl() != null && !post.getImageUrl().isEmpty()) {
+            if (post.getImageUrl() != null && !post.getImageUrl().trim().isEmpty()) {
+                log.info("🖼️ Отправляю фото: {}", post.getImageUrl());
                 newsBot.sendPhoto(chatId, post.getImageUrl(), cleanContent);
             } else {
+                log.info("📝 Отправляю только текст (нет image_url)");
                 newsBot.sendText(chatId, cleanContent);
             }
 
             post.setStatus(PostQueue.Status.SENT);
             postQueueRepository.save(post);
+            log.info("✅ Пост ID={} опубликован", post.getId());
 
         } catch (Exception e) {
-            log.error("❌ Ошибка публикации: {}", e.getMessage());
+            log.error("❌ Ошибка публикации ID={}: {}", post.getId(), e.getMessage(), e);
             post.setStatus(PostQueue.Status.ERROR);
             postQueueRepository.save(post);
         }
@@ -67,5 +70,4 @@ public class PublisherService {
                 .replace("**", "") // Иногда GPT путает MD и HTML
                 .trim();
     }
-
 }

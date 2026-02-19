@@ -34,41 +34,39 @@ public class NewsScheduler {
             if (source.getTargetChannel() == null) continue;
 
             try {
-                // Парсим (возвращает ParsedPost)
                 List<ParserService.ParsedPost> newPosts = parserService.parseNewPosts(source);
 
                 if (newPosts.isEmpty()) continue;
 
                 log.info("🔥 Найдено {} постов в '{}'", newPosts.size(), source.getName());
 
-                for (ParserService.ParsedPost post : newPosts) {
+                for (ParserService.ParsedPost parsedPost : newPosts) {
 
-                    String systemPrompt = (source.getSystemPrompt() != null && !source.getSystemPrompt().isEmpty())
+                    String systemPrompt = source.getSystemPrompt() != null && !source.getSystemPrompt().isEmpty()
                             ? source.getSystemPrompt()
                             : "Ты редактор Telegram-канала.";
 
-                    // Рерайтим через AI
-                    String summary = openAiService.summarize(post.getText(), systemPrompt);
+                    String summary = openAiService.summarize(parsedPost.getText(), systemPrompt);
 
-                    if (summary != null) {
-                        // --- УСИЛЕННАЯ ПРОВЕРКА SKIP ---
+                    if (summary != null && !summary.trim().isEmpty()) {
                         String cleanSummary = summary.trim().toUpperCase();
 
                         if (cleanSummary.contains("SKIP")) {
                             log.info("🚫 Отсеяно (реклама/спам): {}", source.getName());
-                            continue; // Пропускаем сохранение
+                            continue;
                         }
 
-                        // Если не SKIP - сохраняем в очередь
                         PostQueue queueItem = new PostQueue();
                         queueItem.setContent(summary);
-                        queueItem.setImageUrl(post.getImageUrl()); // Сохраняем URL картинки
+                        queueItem.setImageUrl(parsedPost.getImageUrl());
                         queueItem.setTargetChannel(source.getTargetChannel());
+                        queueItem.setPriority(1);
                         queueItem.setStatus(PostQueue.Status.PENDING);
                         queueItem.setScheduledTime(LocalDateTime.now());
 
                         postQueueRepository.save(queueItem);
-                        log.info("📥 Добавлено в очередь: {}", source.getName());
+
+                        log.info("📥 Добавлено в очередь: {} (image={})", source.getName(), parsedPost.getImageUrl());
                     }
                 }
             } catch (Exception e) {
