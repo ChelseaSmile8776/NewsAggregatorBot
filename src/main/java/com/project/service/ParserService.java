@@ -184,15 +184,42 @@ public class ParserService {
     }
 
     private boolean isAd(String text) {
-        String lower = text.toLowerCase();
-        return lower.contains("подписывайтесь") ||
-                lower.contains("читать далее") ||
-                lower.contains("erid:") ||
-                lower.contains("реклама") ||
-                lower.contains("ставки") ||
-                lower.contains("казино") ||
-                lower.contains("melbet") ||
-                lower.contains("состоится") ||
-                lower.contains("1xbet");
+        if (text == null) return false;
+
+        String lower = text.toLowerCase().trim();
+
+        // 🔥 РЕКЛАМА/БУКМЕКЕРЫ/СПАМ
+        String[] adKeywords = {
+                "подписывайтесь", "читать далее", "erid:", "реклама", "ставки", "казино",
+                "melbet", "1xbet", "фонабет", "париматч", "винлайн", "бонус", "промокод",
+                "заработай", "заработок", "присоединяйся", "покупай", "закажи", "забрать",
+                "бонус", "бонусы"
+        };
+
+        // ⚠️ РИСКИ (политика/война)
+        String[] riskKeywords = {
+                "путин", "медведев", "патрушев", "шойгу", "лавров",
+                "набиуллина", "мишустин", "силуанов", "зеленский", "украина", "мобилизация",
+                "спецоперация", "денацификация", "террористы", "нацисты", "всу", "азов",
+                "крым", "донбасс", "лднр", "днр", "лнр"
+        };
+
+        // Проверяем все ключевые слова
+        for (String keyword : adKeywords) {
+            if (lower.contains(keyword)) return true;
+        }
+        for (String keyword : riskKeywords) {
+            if (lower.contains(keyword)) return true;
+        }
+
+        // 📊 >10 слешей = спам со ссылками
+        if (lower.chars().filter(ch -> ch == '/').count() > 10) return true;
+
+        // 📢 >5 !? = кричащий спам
+        if (lower.chars().filter(ch -> ch == '!' || ch == '?').count() > 5) return true;
+
+        return false;
     }
+
+
 }
