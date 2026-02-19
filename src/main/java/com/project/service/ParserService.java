@@ -36,7 +36,7 @@ public class ParserService {
         List<ParsedPost> newPosts = new ArrayList<>();
 
         try {
-            // Заголовки, чтобы Telegram не думал, что мы робот (иногда помогает с картинками)
+            // User-Agent to prevent blocking
             Document doc = Jsoup.connect(source.getUrl())
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
                     .get();
@@ -84,13 +84,11 @@ public class ParserService {
                             }
                         }
 
-                        // 3. Если нет -> Ищем превью ССЫЛКИ (Link Preview) - вот этого не хватало!
+                        // 3. Если нет -> Ищем превью ССЫЛКИ (Link Preview)
                         if (imageUrl == null) {
                             Element linkPreview = msg.selectFirst(".tgme_widget_message_link_preview_photo");
                             if (linkPreview != null) {
-                                // Картинка ссылки тоже часто в style
                                 imageUrl = extractUrlFromStyle(linkPreview.attr("style"));
-                                // Иногда она просто в теге <img> внутри
                                 if (imageUrl == null) {
                                     Element imgTag = linkPreview.selectFirst("img");
                                     if (imgTag != null) imageUrl = imgTag.attr("src");
@@ -117,9 +115,13 @@ public class ParserService {
                                 post.setImageUrl(imageUrl);
                                 newPosts.add(post);
 
-                                // Лог для отладки (потом можно убрать)
-                                if (imageUrl != null) log.info("📸 Найдена картинка для поста {}", postId);
-                                else log.info("⚠️ Пост {} без картинки", postId);
+                                // --- ЛОГИРОВАНИЕ ---
+                                if (imageUrl != null) {
+                                    log.info("📸 Найдена картинка для поста {}", postId);
+                                } else {
+                                    // 🔥 ВАЖНО: Выводим HTML поста без картинки, чтобы понять структуру
+                                    log.warn("⚠️ ПОСТ БЕЗ КАРТИНКИ (ID {}). HTML:\n{}", postId, msg.outerHtml());
+                                }
                             }
                         }
                     }
@@ -141,7 +143,7 @@ public class ParserService {
     }
 
     private String extractUrlFromStyle(String style) {
-        // Правильная регулярка
+        // Правильная регулярка с двойным экранированием для Java строки
         Pattern pattern = Pattern.compile("url\\('?(.*?)'?\\)");
         Matcher matcher = pattern.matcher(style);
         if (matcher.find()) {
