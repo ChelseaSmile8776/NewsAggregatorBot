@@ -15,6 +15,10 @@ import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import java.net.URL;
+import java.net.HttpURLConnection;
+import java.io.InputStream;
+
 
 import java.util.List;
 import java.util.Map;
@@ -219,26 +223,45 @@ public class NewsBot extends TelegramLongPollingBot {
     // import org.telegram.telegrambots.meta.api.objects.InputFile;
 
     public void sendPhoto(long chatId, String imageUrl, String caption) {
-        SendPhoto photo = new SendPhoto();
-        photo.setChatId(String.valueOf(chatId));
-        photo.setPhoto(new InputFile(imageUrl));
-
-        // Обрезаем подпись, если она слишком длинная (лимит Telegram 1024 символа для фото)
-        if (caption.length() > 1024) {
-            caption = caption.substring(0, 1021) + "...";
-        }
-        photo.setCaption(caption);
-
-        // ВАЖНО: Включаем HTML
-        photo.setParseMode("HTML");
-
         try {
-            execute(photo);
-        } catch (TelegramApiException e) {
-            log.error("Ошибка отправки фото: {}", e.getMessage());
-            // Если фото не отправилось (битая ссылка), пробуем отправить просто текст
-            sendText(chatId, caption);
+            log.info("🖼️ Скачиваю и отправляю фото: {}", imageUrl);
+
+            // 1. Скачиваем картинку НАШИМ ботом
+            URL url = new URL(imageUrl);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(30000);
+            conn.connect();
+
+            if (conn.getResponseCode() == 200) {
+                try (InputStream inputStream = conn.getInputStream()) {
+                    SendPhoto photo = new SendPhoto();
+                    photo.setChatId(String.valueOf(chatId));
+                    photo.setPhoto(new InputFile(inputStream, "photo.jpg"));
+
+                    // Обрезаем подпись
+                    if (caption.length() > 1024) {
+                        caption = caption.substring(0, 1021) + "...";
+                    }
+                    photo.setCaption(caption);
+                    photo.setParseMode("HTML");
+
+                    execute(photo);
+                    log.info("✅ Фото скачано и отправлено ({})", imageUrl);
+                    return; // Успех!
+                }
+            } else {
+                log.warn("❌ HTTP {} для {}", conn.getResponseCode(), imageUrl);
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Скачивание фото не удалось: {}", e.getMessage());
         }
+
+        // 100% фоллбэк — текст
+        log.info("📝 Фоллбэк: отправляю текст");
+        sendText(chatId, caption);
     }
 
     // --- ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ---

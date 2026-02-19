@@ -35,15 +35,13 @@ public class PublisherService {
 
         try {
             Long chatId = Long.parseLong(post.getTargetChannel().getTelegramId());
-
-            // 🔥 ОЧИСТКА ОТ <br> и прочего мусора
             String cleanContent = cleanHtml(post.getContent());
 
             if (post.getImageUrl() != null && !post.getImageUrl().trim().isEmpty()) {
-                log.info("🖼️ Отправляю фото: {}", post.getImageUrl());
+                log.info("🖼️ Пробую фото: {}", post.getImageUrl());
                 newsBot.sendPhoto(chatId, post.getImageUrl(), cleanContent);
             } else {
-                log.info("📝 Отправляю только текст (нет image_url)");
+                log.info("📝 Только текст (нет image_url)");
                 newsBot.sendText(chatId, cleanContent);
             }
 
