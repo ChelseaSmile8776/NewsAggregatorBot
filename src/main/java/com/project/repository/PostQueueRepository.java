@@ -11,6 +11,11 @@ public interface PostQueueRepository extends JpaRepository<PostQueue, Long> {
     // Найти готовые к публикации посты (время пришло + статус PENDING), отсортировать по важности
     @Query("SELECT p FROM PostQueue p WHERE p.status = 'PENDING' AND p.scheduledTime <= :now ORDER BY p.priority DESC, p.scheduledTime ASC")
     List<PostQueue> findReadyToPublish(LocalDateTime now, Pageable pageable);
+
     List<PostQueue> findAllByStatusAndScheduledTimeBefore(PostQueue.Status status, LocalDateTime time);
     List<PostQueue> findByStatusOrderByScheduledTimeAsc(PostQueue.Status status);
+
+    // 🔥 НОВЫЙ МЕТОД ДЛЯ ВИДЕО ПРИОРИТЕТА
+    @Query("SELECT p FROM PostQueue p WHERE p.status = 'PENDING' AND p.imageUrl LIKE '%.mp4' ORDER BY p.scheduledTime ASC")
+    List<PostQueue> findPendingVideoPosts();
 }

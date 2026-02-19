@@ -20,13 +20,23 @@ public class PublisherService {
     private final PostQueueRepository postQueueRepository;
     private final NewsBot newsBot;
 
-    // 🔴 ВРЕМЕННО 30 сек для теста! Потом верни 60000
-    @Scheduled(fixedDelay = 30000)
+    // 🔥 10 сек интервал + ПРИОРИТЕТ ВИДЕО!
+    @Scheduled(fixedDelay = 10000)
     @Transactional
     public void publishNextPost() {
-        // 🔥 КРИТИЧНЫЙ ДЕБАГ ЛОГ
         log.info("🚀 === PUBLISHER ЗАПУЩЕН! {} ===", LocalDateTime.now());
 
+        // 🎥 1. ПРОВЕРЯЕМ ВИДЕО ПЕРВЫМИ (mp4)
+        List<PostQueue> videoPosts = postQueueRepository.findPendingVideoPosts();
+        if (!videoPosts.isEmpty()) {
+            PostQueue videoPost = videoPosts.get(0);
+            log.info("🎥 ВИДЕО ПРИОРИТЕТ! ID={} канал={} {}",
+                    videoPost.getId(), videoPost.getTargetChannel().getTitle(), videoPost.getImageUrl());
+            publishPost(videoPost);
+            return;
+        }
+
+        // 📸 2. Обычная очередь (первые 5)
         List<PostQueue> queue = postQueueRepository.findByStatusOrderByScheduledTimeAsc(PostQueue.Status.PENDING);
         log.info("📊 В очереди PENDING постов: {}", queue.size());
 
@@ -37,7 +47,10 @@ public class PublisherService {
 
         PostQueue post = queue.get(0);
         log.info("📤 Публикую пост ID={} в канал {}", post.getId(), post.getTargetChannel().getTitle());
+        publishPost(post);
+    }
 
+    private void publishPost(PostQueue post) {
         try {
             Long chatId = Long.parseLong(post.getTargetChannel().getTelegramId());
             String cleanContent = cleanHtml(post.getContent());
