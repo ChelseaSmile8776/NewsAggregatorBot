@@ -30,7 +30,7 @@ public class CollectorService {
     private final PostQueueRepository postQueueRepository;
     private final OpenAIService openAIService;
 
-    @Scheduled(fixedRate = 600000) // 10 минут
+    //@Scheduled(fixedRate = 600000) // 10 минут
     @Transactional
     public void collectNews() {
         log.info("Начинаю сбор новостей...");
