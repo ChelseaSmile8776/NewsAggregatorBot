@@ -23,7 +23,6 @@ public class PublisherService {
     @Scheduled(fixedDelay = 300000)
     @Transactional
     public void publishNextPost() {
-        // Ищем посты со статусом PENDING
         List<PostQueue> queue = postQueueRepository.findByStatusOrderByScheduledTimeAsc(PostQueue.Status.PENDING);
 
         if (queue.isEmpty()) {
@@ -31,18 +30,19 @@ public class PublisherService {
             return;
         }
 
-        // Берем самый старый
         PostQueue post = queue.get(0);
-
         log.info("📤 Публикую пост ID={} в канал {}", post.getId(), post.getTargetChannel().getTitle());
 
         try {
             Long chatId = Long.parseLong(post.getTargetChannel().getTelegramId());
 
+            // 🔥 ОЧИСТКА ОТ <br> и прочего мусора
+            String cleanContent = cleanHtml(post.getContent());
+
             if (post.getImageUrl() != null && !post.getImageUrl().isEmpty()) {
-                newsBot.sendPhoto(chatId, post.getImageUrl(), post.getContent());
+                newsBot.sendPhoto(chatId, post.getImageUrl(), cleanContent);
             } else {
-                newsBot.sendText(chatId, post.getContent());
+                newsBot.sendText(chatId, cleanContent);
             }
 
             post.setStatus(PostQueue.Status.SENT);
@@ -54,4 +54,18 @@ public class PublisherService {
             postQueueRepository.save(post);
         }
     }
+
+    // Метод для очистки HTML под стандарты Telegram
+    private String cleanHtml(String input) {
+        if (input == null) return "";
+        return input
+                .replace("<br>", "\n")
+                .replace("<br/>", "\n")
+                .replace("<br />", "\n")
+                .replace("<p>", "")
+                .replace("</p>", "\n\n")
+                .replace("**", "") // Иногда GPT путает MD и HTML
+                .trim();
+    }
+
 }
