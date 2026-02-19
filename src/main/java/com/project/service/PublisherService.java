@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -19,12 +20,15 @@ public class PublisherService {
     private final PostQueueRepository postQueueRepository;
     private final NewsBot newsBot;
 
-    // Публикация раз в 5 минут
-    @Scheduled(fixedDelay = 300000)
+    // 🔴 ВРЕМЕННО 30 сек для теста! Потом верни 60000
+    @Scheduled(fixedDelay = 30000)
     @Transactional
     public void publishNextPost() {
-        // Берем старые "зависшие" PENDING посты, если нужно, или просто FIFO
+        // 🔥 КРИТИЧНЫЙ ДЕБАГ ЛОГ
+        log.info("🚀 === PUBLISHER ЗАПУЩЕН! {} ===", LocalDateTime.now());
+
         List<PostQueue> queue = postQueueRepository.findByStatusOrderByScheduledTimeAsc(PostQueue.Status.PENDING);
+        log.info("📊 В очереди PENDING постов: {}", queue.size());
 
         if (queue.isEmpty()) {
             log.info("📭 Очередь пуста, отдыхаем.");
@@ -37,29 +41,27 @@ public class PublisherService {
         try {
             Long chatId = Long.parseLong(post.getTargetChannel().getTelegramId());
             String cleanContent = cleanHtml(post.getContent());
-            String url = post.getImageUrl(); // может быть null
+            String url = post.getImageUrl();
 
             if (url != null && !url.trim().isEmpty()) {
-                // Пытаемся понять, это видео или фото
                 if (isVideoUrl(url)) {
-                    log.info("🎥 Обнаружена ссылка на видео: {}", url);
+                    log.info("🎥 ВИДЕО: {}", url);
                     newsBot.sendVideo(chatId, url, cleanContent);
                 } else {
-                    log.info("🖼️ Отправляю как фото: {}", url);
+                    log.info("🖼️ ФОТО: {}", url);
                     newsBot.sendPhoto(chatId, url, cleanContent);
                 }
             } else {
-                log.info("📝 Только текст (нет media url)");
+                log.info("📝 ТЕКСТ");
                 newsBot.sendText(chatId, cleanContent);
             }
 
             post.setStatus(PostQueue.Status.SENT);
             postQueueRepository.save(post);
-            log.info("✅ Пост ID={} опубликован", post.getId());
+            log.info("✅ Пост ID={} ОТПРАВЛЕН", post.getId());
 
         } catch (Exception e) {
-            log.error("❌ Ошибка публикации ID={}: {}", post.getId(), e.getMessage(), e);
-            // Можно поставить ERROR, чтобы не блокировать очередь навечно этим постом
+            log.error("❌ ОШИБКА ID={}: {}", post.getId(), e.getMessage(), e);
             post.setStatus(PostQueue.Status.ERROR);
             postQueueRepository.save(post);
         }

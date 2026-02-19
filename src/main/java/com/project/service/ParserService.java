@@ -192,6 +192,7 @@ public class ParserService {
                 lower.contains("ставки") ||
                 lower.contains("казино") ||
                 lower.contains("melbet") ||
+                lower.contains("состоится") ||
                 lower.contains("1xbet");
     }
 }
