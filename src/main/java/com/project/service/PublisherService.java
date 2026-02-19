@@ -19,10 +19,11 @@ public class PublisherService {
     private final PostQueueRepository postQueueRepository;
     private final NewsBot newsBot;
 
-    // Публикация раз в 5 минут (300000 мс)
+    // Публикация раз в 5 минут
     @Scheduled(fixedDelay = 300000)
     @Transactional
     public void publishNextPost() {
+        // Берем старые "зависшие" PENDING посты, если нужно, или просто FIFO
         List<PostQueue> queue = postQueueRepository.findByStatusOrderByScheduledTimeAsc(PostQueue.Status.PENDING);
 
         if (queue.isEmpty()) {
@@ -36,12 +37,19 @@ public class PublisherService {
         try {
             Long chatId = Long.parseLong(post.getTargetChannel().getTelegramId());
             String cleanContent = cleanHtml(post.getContent());
+            String url = post.getImageUrl(); // может быть null
 
-            if (post.getImageUrl() != null && !post.getImageUrl().trim().isEmpty()) {
-                log.info("🖼️ Пробую фото: {}", post.getImageUrl());
-                newsBot.sendPhoto(chatId, post.getImageUrl(), cleanContent);
+            if (url != null && !url.trim().isEmpty()) {
+                // Пытаемся понять, это видео или фото
+                if (isVideoUrl(url)) {
+                    log.info("🎥 Обнаружена ссылка на видео: {}", url);
+                    newsBot.sendVideo(chatId, url, cleanContent);
+                } else {
+                    log.info("🖼️ Отправляю как фото: {}", url);
+                    newsBot.sendPhoto(chatId, url, cleanContent);
+                }
             } else {
-                log.info("📝 Только текст (нет image_url)");
+                log.info("📝 Только текст (нет media url)");
                 newsBot.sendText(chatId, cleanContent);
             }
 
@@ -51,12 +59,18 @@ public class PublisherService {
 
         } catch (Exception e) {
             log.error("❌ Ошибка публикации ID={}: {}", post.getId(), e.getMessage(), e);
+            // Можно поставить ERROR, чтобы не блокировать очередь навечно этим постом
             post.setStatus(PostQueue.Status.ERROR);
             postQueueRepository.save(post);
         }
     }
 
-    // Метод для очистки HTML под стандарты Telegram
+    private boolean isVideoUrl(String url) {
+        if (url == null) return false;
+        String lower = url.toLowerCase();
+        return lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.contains("blob:");
+    }
+
     private String cleanHtml(String input) {
         if (input == null) return "";
         return input
@@ -65,7 +79,7 @@ public class PublisherService {
                 .replace("<br />", "\n")
                 .replace("<p>", "")
                 .replace("</p>", "\n\n")
-                .replace("**", "") // Иногда GPT путает MD и HTML
+                .replace("**", "")
                 .trim();
     }
 }

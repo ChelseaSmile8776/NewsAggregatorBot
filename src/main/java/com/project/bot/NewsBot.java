@@ -10,16 +10,16 @@ import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.methods.send.SendVideo; // <--- NEW
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+
 import java.net.URL;
 import java.net.HttpURLConnection;
 import java.io.InputStream;
-
-
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -81,7 +81,6 @@ public class NewsBot extends TelegramLongPollingBot {
                 }
             }
             else if (callData.startsWith("channel_sources_")) {
-                // Берем [2], так как формат channel_sources_ID
                 Long targetId = Long.parseLong(callData.split("_")[2]);
                 var sources = botService.getSourcesByTargetId(targetId);
 
@@ -140,7 +139,6 @@ public class NewsBot extends TelegramLongPollingBot {
             var message = update.getMessage();
             long chatId = message.getChatId();
 
-            // Логика добавления ЦЕЛЕВОГО канала (Событие добавления бота в админы)
             if (update.hasMyChatMember()) {
                 var chatMember = update.getMyChatMember();
                 String status = chatMember.getNewChatMember().getStatus();
@@ -152,7 +150,6 @@ public class NewsBot extends TelegramLongPollingBot {
                 }
             }
 
-            // Логика добавления ИСТОЧНИКА (пересылка поста)
             if (message.getForwardFromChat() != null) {
                 var channelChat = message.getForwardFromChat();
                 String username = channelChat.getUserName();
@@ -170,13 +167,11 @@ public class NewsBot extends TelegramLongPollingBot {
                     return;
                 }
 
-                // 1. СОЗДАЕМ ЧЕРНОВИК
                 SourceDraft draft = new SourceDraft();
                 draft.setUrl(url);
                 draft.setName(title);
                 drafts.put(chatId, draft);
 
-                // 2. СПРАШИВАЕМ КУДА ДОБАВИТЬ
                 List<TargetChannel> channels = botService.getAllTargets();
                 if (channels.isEmpty()) {
                     sendText(chatId, "⚠️ Нет целевых каналов! Добавь меня админом в канал и напиши туда любое сообщение.");
@@ -186,7 +181,6 @@ public class NewsBot extends TelegramLongPollingBot {
                 }
             }
 
-            // ОБРАБОТКА ТЕКСТОВЫХ КОМАНД
             if (message.hasText()) {
                 String text = message.getText();
 
@@ -218,15 +212,10 @@ public class NewsBot extends TelegramLongPollingBot {
         }
     }
 
-    // Добавить импорты:
-    // import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
-    // import org.telegram.telegrambots.meta.api.objects.InputFile;
-
     public void sendPhoto(long chatId, String imageUrl, String caption) {
         try {
             log.info("🖼️ Скачиваю и отправляю фото: {}", imageUrl);
 
-            // 1. Скачиваем картинку НАШИМ ботом
             URL url = new URL(imageUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
@@ -240,7 +229,6 @@ public class NewsBot extends TelegramLongPollingBot {
                     photo.setChatId(String.valueOf(chatId));
                     photo.setPhoto(new InputFile(inputStream, "photo.jpg"));
 
-                    // Обрезаем подпись
                     if (caption.length() > 1024) {
                         caption = caption.substring(0, 1021) + "...";
                     }
@@ -249,18 +237,58 @@ public class NewsBot extends TelegramLongPollingBot {
 
                     execute(photo);
                     log.info("✅ Фото скачано и отправлено ({})", imageUrl);
-                    return; // Успех!
+                    return;
                 }
             } else {
                 log.warn("❌ HTTP {} для {}", conn.getResponseCode(), imageUrl);
             }
-
         } catch (Exception e) {
             log.error("❌ Скачивание фото не удалось: {}", e.getMessage());
         }
 
-        // 100% фоллбэк — текст
+        // Фоллбэк — текст
         log.info("📝 Фоллбэк: отправляю текст");
+        sendText(chatId, caption);
+    }
+
+    // --- НОВЫЙ МЕТОД ДЛЯ ВИДЕО ---
+    public void sendVideo(long chatId, String videoUrl, String caption) {
+        try {
+            log.info("🎥 Скачиваю и отправляю видео: {}", videoUrl);
+
+            URL url = new URL(videoUrl);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(60000); // Тайм-аут побольше для видео
+            conn.connect();
+
+            if (conn.getResponseCode() == 200) {
+                try (InputStream inputStream = conn.getInputStream()) {
+                    SendVideo video = new SendVideo();
+                    video.setChatId(String.valueOf(chatId));
+                    video.setVideo(new InputFile(inputStream, "video.mp4"));
+
+                    if (caption.length() > 1024) {
+                        caption = caption.substring(0, 1021) + "...";
+                    }
+                    video.setCaption(caption);
+                    video.setParseMode("HTML");
+
+                    execute(video);
+                    log.info("✅ Видео отправлено ({})", videoUrl);
+                    return;
+                }
+            } else {
+                log.warn("❌ HTTP {} для видео {}", conn.getResponseCode(), videoUrl);
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Ошибка sendVideo: {}", e.getMessage());
+        }
+
+        // Фоллбэк: если видео не прошло, пробуем отправить текст
+        log.info("📝 Фоллбэк видео -> текст");
         sendText(chatId, caption);
     }
 
@@ -288,17 +316,9 @@ public class NewsBot extends TelegramLongPollingBot {
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
         message.setText(text);
-
-        // ВАЖНО: Включаем HTML, чтобы работали теги <b> и <i>
         message.setParseMode("HTML");
-
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            log.error("Error sending text", e);
-        }
+        try { execute(message); } catch (TelegramApiException e) { log.error("Error sending text", e); }
     }
-
 
     public void sendTextWithMarkup(long chatId, String text, InlineKeyboardMarkup markup) {
         SendMessage message = new SendMessage();
@@ -309,7 +329,6 @@ public class NewsBot extends TelegramLongPollingBot {
         try { execute(message); } catch (TelegramApiException e) { log.error("Error", e); }
     }
 
-    // Внутренний класс для черновика (DTO)
     @Data
     private static class SourceDraft {
         private String url;
