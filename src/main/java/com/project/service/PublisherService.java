@@ -96,6 +96,5 @@ public class PublisherService {
                 .replace("</p>", "\n\n")
                 .replace("**", "")
                 .trim();
-
     }
 }
