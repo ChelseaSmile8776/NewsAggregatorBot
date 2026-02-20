@@ -27,7 +27,9 @@ public class PublisherService {
         log.info("🚀 === PUBLISHER ЗАПУЩЕН! {} ===", LocalDateTime.now());
 
         // 🎥 1. ПРОВЕРЯЕМ ВИДЕО ПЕРВЫМИ (mp4)
-        List<PostQueue> videoPosts = postQueueRepository.findPendingVideoPosts();
+        // ✅ ЗАМЕНИ НА ЭТО:
+        List<PostQueue> videoPosts = postQueueRepository.findByStatusAndImageUrlContainingIgnoreCaseOrderByScheduledTimeAsc(
+                PostQueue.Status.PENDING, ".mp4");
         if (!videoPosts.isEmpty()) {
             PostQueue videoPost = videoPosts.get(0);
             log.info("🎥 ВИДЕО ПРИОРИТЕТ! ID={} канал={} {}",
