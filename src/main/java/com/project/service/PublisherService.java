@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,10 +27,15 @@ public class PublisherService {
     public void publishNextPost() {
         log.info("🚀 === PUBLISHER ЗАПУЩЕН! {} ===", LocalDateTime.now());
 
-        // 🎥 1. ПРОВЕРЯЕМ ВИДЕО ПЕРВЫМИ (mp4)
-        // ✅ ЗАМЕНИ НА ЭТО:
-        List<PostQueue> videoPosts = postQueueRepository.findByStatusAndImageUrlContainingIgnoreCaseOrderByScheduledTimeAsc(
-                PostQueue.Status.PENDING, ".mp4");
+        // 🎥 1. ПРОВЕРЯЕМ ВИДЕО ПЕРВЫМИ (mp4
+
+// ✅ Эта РАБОТАЕТ (стандартный метод):
+        List<PostQueue> videoPosts = postQueueRepository.findByStatusOrderByScheduledTimeAsc(PostQueue.Status.PENDING)
+                .stream()
+                .filter(p -> p.getImageUrl() != null && p.getImageUrl().toLowerCase().contains(".mp4"))
+                .limit(1)
+                .collect(Collectors.toList());
+
         if (!videoPosts.isEmpty()) {
             PostQueue videoPost = videoPosts.get(0);
             log.info("🎥 ВИДЕО ПРИОРИТЕТ! ID={} канал={} {}",
