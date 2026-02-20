@@ -91,13 +91,16 @@ public class PublisherService {
     private boolean isVideoUrl(String url) {
         if (url == null) return false;
         String lower = url.toLowerCase();
-        // ✅ ТОЧНАЯ ПРОВЕРКА MP4/VIDEO ПЕРЕД ФОТО!
-        return lower.endsWith(".mp4") ||
-                lower.endsWith(".mov") ||
-                lower.endsWith(".avi") ||
-                lower.endsWith(".mkv") ||
+
+        if (lower.contains(".mp4") ||
+                lower.contains(".mov") ||
+                lower.contains(".avi") ||
+                lower.contains(".mkv") ||
                 lower.contains("blob:") ||
-                lower.contains("video/");
+                lower.contains("video/")) {
+            return true;
+        }
+        return false;
     }
 
     private String cleanHtml(String input) {
