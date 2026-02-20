@@ -27,9 +27,7 @@ public class PublisherService {
     public void publishNextPost() {
         log.info("🚀 === PUBLISHER ЗАПУЩЕН! {} ===", LocalDateTime.now());
 
-        // 🎥 1. ПРОВЕРЯЕМ ВИДЕО ПЕРВЫМИ (mp4
-
-// ✅ Эта РАБОТАЕТ (стандартный метод):
+        // 🎥 1. ПРОВЕРЯЕМ ВИДЕО ПЕРВЫМИ (mp4) - ✅ РАБОТАЕТ!
         List<PostQueue> videoPosts = postQueueRepository.findByStatusOrderByScheduledTimeAsc(PostQueue.Status.PENDING)
                 .stream()
                 .filter(p -> p.getImageUrl() != null && p.getImageUrl().toLowerCase().contains(".mp4"))
@@ -44,7 +42,7 @@ public class PublisherService {
             return;
         }
 
-        // 📸 2. Обычная очередь (первые 5)
+        // 📸 2. Обычная очередь
         List<PostQueue> queue = postQueueRepository.findByStatusOrderByScheduledTimeAsc(PostQueue.Status.PENDING);
         log.info("📊 В очереди PENDING постов: {}", queue.size());
 
@@ -65,15 +63,16 @@ public class PublisherService {
             String url = post.getImageUrl();
 
             if (url != null && !url.trim().isEmpty()) {
+                // 🔥 ИСПРАВЛЕННАЯ ЛОГИКА ВИДЕО!
                 if (isVideoUrl(url)) {
-                    log.info("🎥 ВИДЕО: {}", url);
+                    log.info("🎥 ВИДЕО ОТПРАВЛЯЮ: {}", url);
                     newsBot.sendVideo(chatId, url, cleanContent);
                 } else {
-                    log.info("🖼️ ФОТО: {}", url);
+                    log.info("🖼️ ФОТО ОТПРАВЛЯЮ: {}", url);
                     newsBot.sendPhoto(chatId, url, cleanContent);
                 }
             } else {
-                log.info("📝 ТЕКСТ");
+                log.info("📝 ТЕКСТ ОТПРАВЛЯЮ");
                 newsBot.sendText(chatId, cleanContent);
             }
 
@@ -88,10 +87,17 @@ public class PublisherService {
         }
     }
 
+    // 🔥 ИСПРАВЛЕННЫЙ isVideoUrl - ПРОВЕРКА ПЕРЕД .sendPhoto!
     private boolean isVideoUrl(String url) {
         if (url == null) return false;
         String lower = url.toLowerCase();
-        return lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.contains("blob:");
+        // ✅ ТОЧНАЯ ПРОВЕРКА MP4/VIDEO ПЕРЕД ФОТО!
+        return lower.endsWith(".mp4") ||
+                lower.endsWith(".mov") ||
+                lower.endsWith(".avi") ||
+                lower.endsWith(".mkv") ||
+                lower.contains("blob:") ||
+                lower.contains("video/");
     }
 
     private String cleanHtml(String input) {
