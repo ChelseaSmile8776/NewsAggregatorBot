@@ -94,11 +94,19 @@ public class NewsBot extends TelegramLongPollingBot {
             // 🗑 УДАЛИТЬ КАНАЛ (ДОБАВЬ ПОСЛЕ delete_)
             else if (callData.startsWith("delete_channel_")) {
                 Long targetId = Long.parseLong(callData.split("_")[2]);
-                botService.deleteTargetChannel(targetId);  // НОВЫЙ метод в BotService
-                editMessage(chatId, messageId, "✅ Канал успешно удалён!", null);
+
+                try {
+                    botService.deleteTargetChannel(targetId);
+                    editMessage(chatId, messageId, "✅ Канал полностью удалён!\nПосты и источники тоже очищены.", null);
+                } catch (Exception e) {
+                    editMessage(chatId, messageId, "❌ Ошибка удаления: " + e.getMessage(), null);
+                    return;
+                }
+
+                // Обновляем список
                 var channels = botService.getAllTargets();
                 if (channels.isEmpty()) {
-                    editMessage(chatId, messageId, "Список каналов пуст.", null);
+                    editMessage(chatId, messageId, "📢 <b>Список каналов пуст.</b>", null);
                 } else {
                     editMessage(chatId, messageId, "📢 <b>Твоя Сетка Каналов:</b>",
                             keyboardService.getTargetChannelsListKeyboard(channels));

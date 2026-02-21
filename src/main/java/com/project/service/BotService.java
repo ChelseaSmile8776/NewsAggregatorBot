@@ -2,6 +2,7 @@ package com.project.service;
 
 import com.project.entity.Source;
 import com.project.entity.TargetChannel;
+import com.project.repository.PostQueueRepository;  // ← ДОБАВЬ!
 import com.project.repository.SourceRepository;
 import com.project.repository.TargetChannelRepository;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,8 @@ public class BotService {
 
     private final SourceRepository sourceRepository;
     private final TargetChannelRepository targetChannelRepository;
+    private final PostQueueRepository postQueueRepository;
+
 
     @Transactional(readOnly = true)
     public String getSourceInfoText(Long sourceId) {
@@ -80,8 +83,20 @@ public class BotService {
         sourceRepository.save(source);
     }
 
+    @Transactional
     public void deleteTargetChannel(Long targetId) {
+        // 1. УДАЛЯЕМ ПОСТЫ ИЗ ОЧЕРЕДИ
+        postQueueRepository.deleteByTargetChannelId(targetId);
+
+        // 2. УДАЛЯЕМ ИСТОЧНИКИ ЭТОГО КАНАЛА
+        sourceRepository.findAll().stream()
+                .filter(s -> s.getTargetChannel() != null && s.getTargetChannel().getId().equals(targetId))
+                .forEach(s -> sourceRepository.deleteById(s.getId()));
+
+        // 3. УДАЛЯЕМ САМ КАНАЛ
         targetChannelRepository.deleteById(targetId);
+
+        log.info("✅ Канал {} удалён полностью!", targetId);
     }
 
     @Transactional
