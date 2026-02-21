@@ -14,7 +14,7 @@ import java.util.List;
 @Service
 public class KeyboardService {
 
-    // ГЛАВНОЕ МЕНЮ (REPLY)
+    // ГЛАВНОЕ МЕНЮ (REPLY) - БЕЗ ИЗМЕНЕНИЙ
     public ReplyKeyboardMarkup getMainMenu() {
         ReplyKeyboardMarkup markup = new ReplyKeyboardMarkup();
         markup.setResizeKeyboard(true);
@@ -37,7 +37,7 @@ public class KeyboardService {
         return markup;
     }
 
-    // СПИСОК ИСТОЧНИКОВ
+    // СПИСОК ИСТОЧНИКОВ - БЕЗ ИЗМЕНЕНИЙ
     public InlineKeyboardMarkup getSourcesListKeyboard(List<Source> sources) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -54,7 +54,7 @@ public class KeyboardService {
         return markup;
     }
 
-    // УПРАВЛЕНИЕ ИСТОЧНИКОМ
+    // УПРАВЛЕНИЕ ИСТОЧНИКОМ - БЕЗ ИЗМЕНЕНИЙ
     public InlineKeyboardMarkup getSourceControlKeyboard(Long sourceId) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -69,7 +69,7 @@ public class KeyboardService {
         List<InlineKeyboardButton> row2 = new ArrayList<>();
         InlineKeyboardButton backBtn = new InlineKeyboardButton();
         backBtn.setText("🔙 Назад к списку");
-        backBtn.setCallbackData("back_to_list"); // Эта кнопка вернет к списку источников канала
+        backBtn.setCallbackData("back_to_list");
         row2.add(backBtn);
         rows.add(row2);
 
@@ -77,7 +77,7 @@ public class KeyboardService {
         return markup;
     }
 
-    // ВЫБОР ЦЕЛЕВОГО КАНАЛА (ПРИ ДОБАВЛЕНИИ ИСТОЧНИКА)
+    // ВЫБОР ЦЕЛЕВОГО КАНАЛА - БЕЗ ИЗМЕНЕНИЙ
     public InlineKeyboardMarkup getTargetChannelsKeyboard(List<TargetChannel> channels) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
@@ -94,31 +94,38 @@ public class KeyboardService {
         return markup;
     }
 
-    // --- НОВЫЕ МЕТОДЫ ДЛЯ СЕТКИ КАНАЛОВ ---
-
-    // 1. СПИСОК ТВОИХ КАНАЛОВ (СЕТКА)
+    // ✅ ИСПРАВЛЕННЫЙ МЕТОД! ← ТОЛЬКО ЗДЕСЬ ИЗМЕНЕНИЕ
     public InlineKeyboardMarkup getTargetChannelsListKeyboard(List<TargetChannel> channels) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
 
         for (TargetChannel ch : channels) {
             List<InlineKeyboardButton> row = new ArrayList<>();
-            InlineKeyboardButton btn = new InlineKeyboardButton();
-            btn.setText("📢 " + ch.getTitle());
-            btn.setCallbackData("mychannel_" + ch.getId()); // Открывает меню канала
-            row.add(btn);
+
+            // КНОПКА КАНАЛА
+            InlineKeyboardButton channelBtn = new InlineKeyboardButton();
+            channelBtn.setText("📢 " + ch.getTitle());channelBtn.setCallbackData("mychannel_" + ch.getId());
+            row.add(channelBtn);
+
+            // ✅ НОВАЯ КНОПКА 🗑 УДАЛИТЬ
+            InlineKeyboardButton deleteBtn = new InlineKeyboardButton();
+            deleteBtn.setText("🗑");
+            deleteBtn.setCallbackData("delete_channel_" + ch.getId());
+            row.add(deleteBtn);
+
             rows.add(row);
         }
+
+        // Кнопка "Назад к списку каналов" (если нужно)
         markup.setKeyboard(rows);
         return markup;
     }
 
-    // 2. МЕНЮ УПРАВЛЕНИЯ КОНКРЕТНЫМ КАНАЛОМ
+    // МЕНЮ УПРАВЛЕНИЯ КАНАЛОМ - БЕЗ ИЗМЕНЕНИЙ
     public InlineKeyboardMarkup getTargetChannelMenu(Long targetId) {
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
 
-        // Кнопка "Источники"
         List<InlineKeyboardButton> row1 = new ArrayList<>();
         InlineKeyboardButton sourcesBtn = new InlineKeyboardButton();
         sourcesBtn.setText("📋 Источники");
@@ -126,7 +133,6 @@ public class KeyboardService {
         row1.add(sourcesBtn);
         rows.add(row1);
 
-        // Кнопка "Назад"
         List<InlineKeyboardButton> row2 = new ArrayList<>();
         InlineKeyboardButton backBtn = new InlineKeyboardButton();
         backBtn.setText("🔙 Назад к списку каналов");

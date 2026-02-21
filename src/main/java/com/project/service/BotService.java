@@ -80,6 +80,10 @@ public class BotService {
         sourceRepository.save(source);
     }
 
+    public void deleteTargetChannel(Long targetId) {
+        targetChannelRepository.deleteById(targetId);
+    }
+
     @Transactional
     public void addTargetChannel(String chatId, String title) {
         if (targetChannelRepository.findByTelegramId(chatId).isEmpty()) {
