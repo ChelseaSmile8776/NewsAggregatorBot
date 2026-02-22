@@ -21,8 +21,8 @@ public class PublisherService {
     private final PostQueueRepository postQueueRepository;
     private final NewsBot newsBot;
 
-    // 🔥 10 мин интервал + ПРИОРИТЕТ ВИДЕО!
-    @Scheduled(fixedDelay = 600000)
+    // 🔥 30 мин интервал + ПРИОРИТЕТ ВИДЕО!
+    @Scheduled(fixedDelay = 1800000)
     @Transactional
     public void publishNextPost() {
         log.info("🚀 === PUBLISHER ЗАПУЩЕН! {} ===", LocalDateTime.now());

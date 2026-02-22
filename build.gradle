@@ -24,21 +24,24 @@ dependencies {
     implementation 'org.glassfish.jaxb:jaxb-runtime:2.3.1'
     implementation 'org.jsoup:jsoup:1.17.2'
 
-    // Telegram Bot (версию можно взять посвежее или стабильную 6.9.7.1)
+    // Telegram Bot
     implementation 'org.telegram:telegrambots-spring-boot-starter:6.9.7.1'
 
     // Database
     runtimeOnly 'org.postgresql:postgresql'
 
-    // Lombok (для @Data, @RequiredArgsConstructor)
+    // Lombok
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
-    // JSON & HTTP Client (для OpenAI)
+    // JSON & HTTP Client
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     implementation 'org.apache.httpcomponents.client5:httpclient5'
 
-    // Тесты (пригодятся)
+    // ✅ FINGERPRINT (НОВОЕ!)
+    implementation 'commons-codec:commons-codec:1.17.1'
+
+    // Тесты
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
 
