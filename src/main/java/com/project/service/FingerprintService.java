@@ -4,6 +4,7 @@ import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -17,32 +18,44 @@ public class FingerprintService {
             "срочно", "важно", "последние", "новости", "эксклюзив", "только", "сейчас", "читайте"
     );
 
-    public String createFingerprint(String title, String text) {
-        // Заголовок + первые 100 символов текста
-        String content = title.toLowerCase() + " " +
-                (text != null ? text.substring(0, Math.min(100, text.length())) : "").toLowerCase();
+    private static final int MAX_RECENT = 200;
 
-        // Убираем знаки препинания
+    // LinkedHashSet — O(1) поиск + держит порядок вставки для удаления старых
+    private final LinkedHashSet<String> recentFingerprints = new LinkedHashSet<>();
+
+    public String createFingerprint(String text) {
+        if (text == null || text.isBlank()) return "EMPTY";
+
+        // Берём первые 200 символов — достаточно для уникальности
+        String content = text.substring(0, Math.min(200, text.length())).toLowerCase();
+
         String clean = content.replaceAll("[^а-яёa-z0-9\\s]", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
 
-        // Значимые слова > 3 букв, без стоп-слов
         List<String> words = Arrays.stream(clean.split(" "))
-                .filter(word -> word.length() > 3)
-                .filter(word -> !STOP_WORDS.contains(word))
+                .filter(w -> w.length() > 3)
+                .filter(w -> !STOP_WORDS.contains(w))
                 .map(String::trim)
-                .filter(word -> !word.isEmpty())
+                .filter(w -> !w.isEmpty())
                 .distinct()
                 .sorted()
                 .collect(Collectors.toList());
 
-        // SHA-1 хеш
-        String fingerprint = String.join("|", words);
-        return fingerprint.length() > 0 ? DigestUtils.sha1Hex(fingerprint) : "EMPTY";
+        if (words.isEmpty()) return "EMPTY";
+
+        return DigestUtils.sha1Hex(String.join("|", words));
     }
 
-    public boolean isDuplicate(String fingerprint, List<String> recentFingerprints) {
+    public synchronized boolean isDuplicate(String fingerprint) {
         return recentFingerprints.contains(fingerprint);
+    }
+
+    public synchronized void addFingerprint(String fingerprint) {
+        if (recentFingerprints.size() >= MAX_RECENT) {
+            // удаляем самый старый элемент
+            recentFingerprints.remove(recentFingerprints.iterator().next());
+        }
+        recentFingerprints.add(fingerprint);
     }
 }

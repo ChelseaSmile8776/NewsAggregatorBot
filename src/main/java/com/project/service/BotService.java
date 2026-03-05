@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,11 +23,7 @@ public class BotService {
     private final SourceRepository sourceRepository;
     private final TargetChannelRepository targetChannelRepository;
     private final PostQueueRepository postQueueRepository;
-    private final FingerprintService fingerprintService;   // 🔹 новый сервис
-
-    // 🔹 хранение последних фингерпринтов в памяти (простая анти-дубль логика)
-    private final List<String> recentFingerprints = new ArrayList<>();
-    private static final int MAX_RECENT = 50;
+    private final FingerprintService fingerprintService;
 
     @Transactional(readOnly = true)
     public String getSourceInfoText(Long sourceId) {
@@ -54,7 +49,6 @@ public class BotService {
         return sourceRepository.findAll();
     }
 
-    // Получить источники только конкретного канала
     @Transactional(readOnly = true)
     public List<Source> getSourcesByTargetId(Long targetId) {
         return sourceRepository.findAll().stream()
@@ -68,7 +62,6 @@ public class BotService {
         return targetChannelRepository.findAll();
     }
 
-    // Найти канал по ID
     @Transactional(readOnly = true)
     public TargetChannel getTargetChannel(Long id) {
         return targetChannelRepository.findById(id).orElse(null);
@@ -95,16 +88,13 @@ public class BotService {
 
     @Transactional
     public void deleteTargetChannel(Long targetId) {
-        // 1. Удаляем посты этого канала из очереди
         postQueueRepository.deleteByTargetChannelId(targetId);
 
-        // 2. Удаляем источники этого канала
         sourceRepository.findAll().stream()
                 .filter(s -> s.getTargetChannel() != null
                         && s.getTargetChannel().getId().equals(targetId))
                 .forEach(s -> sourceRepository.deleteById(s.getId()));
 
-        // 3. Удаляем сам канал
         targetChannelRepository.deleteById(targetId);
 
         log.info("✅ Канал {} удалён полностью!", targetId);
@@ -121,23 +111,18 @@ public class BotService {
         }
     }
 
-    // 🔹 НОВЫЙ МЕТОД: создать пост с проверкой на дубликаты по фингерпринту
     @Transactional
     public boolean checkAndCreatePost(Source source,
-                                      String title,
                                       String content,
                                       String imageUrl) {
 
-        // считаем fingerprint по заголовку + тексту
-        String fingerprint = fingerprintService.createFingerprint(title, content);
+        String fingerprint = fingerprintService.createFingerprint(content);
 
-        // проверяем, был ли уже такой недавно
-        if (fingerprintService.isDuplicate(fingerprint, recentFingerprints)) {
+        if (fingerprintService.isDuplicate(fingerprint)) {
             log.info("⏭️ Дубликат пропущен: {}...", fingerprint.substring(0, 8));
             return false;
         }
 
-        // создаём запись в PostQueue
         PostQueue post = new PostQueue();
         post.setContent(content);
         post.setImageUrl(imageUrl);
@@ -148,11 +133,7 @@ public class BotService {
 
         postQueueRepository.save(post);
 
-        // запоминаем fingerprint
-        recentFingerprints.add(fingerprint);
-        if (recentFingerprints.size() > MAX_RECENT) {
-            recentFingerprints.remove(0);
-        }
+        fingerprintService.addFingerprint(fingerprint);
 
         log.info("✅ Новый уникальный пост добавлен в очередь: {}...", fingerprint.substring(0, 8));
         return true;

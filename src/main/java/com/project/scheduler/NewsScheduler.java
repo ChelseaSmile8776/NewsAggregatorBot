@@ -4,6 +4,7 @@ import com.project.entity.PostQueue;
 import com.project.entity.Source;
 import com.project.repository.PostQueueRepository;
 import com.project.service.BotService;
+import com.project.service.FingerprintService;
 import com.project.service.OpenAIService;
 import com.project.service.ParserService;
 import lombok.RequiredArgsConstructor;
@@ -27,8 +28,8 @@ public class NewsScheduler {
     private final ParserService parserService;
     private final OpenAIService openAiService;
     private final PostQueueRepository postQueueRepository;
+    private final FingerprintService fingerprintService;
 
-    // защита от параллельного запуска (если один цикл дольше delay)
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     @Scheduled(fixedDelayString = "${scheduler.delay:900000}")
@@ -47,38 +48,38 @@ public class NewsScheduler {
                 if (source.getTargetChannel() == null) continue;
 
                 try {
-                    // ВАЖНО: parseNewPosts сам берет source из БД и двигает lastPostId
                     List<ParserService.ParsedPost> newPosts = parserService.parseNewPosts(source);
-
                     if (newPosts.isEmpty()) continue;
 
                     log.info("🔥 Найдено {} постов в '{}'", newPosts.size(), source.getName());
 
-                    // анти-дубликат в пределах одного запуска (на всякий)
                     Set<Integer> seenPostIds = new HashSet<>();
-
                     LocalDateTime baseTime = LocalDateTime.now();
                     int secOffset = 0;
 
                     for (ParserService.ParsedPost parsedPost : newPosts) {
-                        if (!seenPostIds.add(parsedPost.getPostId())) {
-                            continue;
-                        }
+                        if (!seenPostIds.add(parsedPost.getPostId())) continue;
 
                         String systemPrompt = (source.getSystemPrompt() != null && !source.getSystemPrompt().isEmpty())
                                 ? source.getSystemPrompt()
                                 : "Ты редактор Telegram-канала.";
 
                         String summary = openAiService.summarize(parsedPost.getText(), systemPrompt);
-                        if (summary == null || summary.trim().isEmpty()) {
-                            continue;
-                        }
+                        if (summary == null || summary.trim().isEmpty()) continue;
 
                         String upper = summary.trim().toUpperCase(Locale.ROOT);
                         if (upper.contains("SKIP")) {
-                            log.info("🚫 Отсеяно (реклама/спам): {} (postId={})", source.getName(), parsedPost.getPostId());
+                            log.info("🚫 Отсеяно GPT (реклама/спам): {} (postId={})", source.getName(), parsedPost.getPostId());
                             continue;
                         }
+
+                        // ✅ Проверяем дубликат по фингерпринту саммари
+                        String fingerprint = fingerprintService.createFingerprint(summary);
+                        if (fingerprintService.isDuplicate(fingerprint)) {
+                            log.info("⏭️ Дубликат пропущен: {} (postId={})", source.getName(), parsedPost.getPostId());
+                            continue;
+                        }
+                        fingerprintService.addFingerprint(fingerprint);
 
                         PostQueue queueItem = new PostQueue();
                         queueItem.setContent(summary.trim());
@@ -86,8 +87,6 @@ public class NewsScheduler {
                         queueItem.setTargetChannel(source.getTargetChannel());
                         queueItem.setPriority(1);
                         queueItem.setStatus(PostQueue.Status.PENDING);
-
-                        // Чтобы порядок в очереди был стабильный (и не было одинакового scheduledTime)
                         queueItem.setScheduledTime(baseTime.plusSeconds(secOffset++));
 
                         postQueueRepository.save(queueItem);

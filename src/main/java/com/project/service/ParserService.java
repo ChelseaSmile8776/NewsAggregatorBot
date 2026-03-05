@@ -27,7 +27,7 @@ public class ParserService {
         private int postId;
         private String text;
         private String imageUrl;
-        private boolean isVideo; // <--- NEW
+        private boolean isVideo;
 
         public int getPostId() { return postId; }
         public void setPostId(int postId) { this.postId = postId; }
@@ -92,29 +92,23 @@ public class ParserService {
                 String mediaUrl = null;
                 boolean isVideo = false;
 
-                // 1. Пробуем найти видео (тег <video>)
+                // 1. Прямое видео (тег <video src="...">)
                 Element videoTag = msg.selectFirst("video");
-                if (videoTag != null) {
-                    if (videoTag.hasAttr("src")) {
-                        mediaUrl = normalizeUrl(videoTag.attr("src"));
-                        isVideo = true;
-                    }
+                if (videoTag != null && videoTag.hasAttr("src")) {
+                    mediaUrl = normalizeUrl(videoTag.attr("src"));
+                    isVideo = true;
                 }
 
-                // 2. Если нет видео-тега, ищем превью видео (класс video_thumb)
-                // (Тут мы не знаем URL самого видео, поэтому берем картинку, но помечаем, что это "было видео",
-                //  хотя без прямой ссылки на mp4 бот всё равно отправит как фото, т.к. sendVideo требует видео-файл).
-                //  ВАЖНО: Телеграм-виджет часто не отдает прямой URL видео. Если его нет — шлём превью как фото.
+                // 2. Превью видео — шлём как фото (прямого URL нет)
                 if (mediaUrl == null) {
                     Element videoThumb = msg.selectFirst(".tgme_widget_message_video_thumb");
                     if (videoThumb != null) {
                         mediaUrl = extractUrlFromStyle(videoThumb.attr("style"));
-                        // isVideo = true; // <-- Если раскомментить, бот попробует отправить картинку методом sendVideo и упадет.
-                        // Поэтому оставляем false, чтобы ушло как фото.
+                        // isVideo остаётся false — отправим превью как фото
                     }
                 }
 
-                // 3. Если нет видео, ищем просто фото
+                // 3. Обычное фото
                 if (mediaUrl == null) {
                     Element photo = msg.selectFirst(".tgme_widget_message_photo_wrap");
                     if (photo != null) {
@@ -140,8 +134,7 @@ public class ParserService {
                 post.setPostId(postId);
                 post.setText(rawText);
                 post.setImageUrl(mediaUrl);
-                post.setVideo(isVideo); // <---
-
+                post.setVideo(isVideo);
                 newPosts.add(post);
 
                 if (mediaUrl != null) {
@@ -185,32 +178,26 @@ public class ParserService {
 
     private boolean isAd(String text) {
         if (text == null) return false;
-
         String lower = text.toLowerCase().trim();
 
-        // 🔥 РЕКЛАМА/БУКМЕКЕРЫ/СПАМ
         String[] adKeywords = {
-                "подписывайтесь", "подписывайся", "подписываться","читать далее", "erid:",
+                "подписывайтесь", "подписывайся", "подписываться", "читать далее", "erid:",
                 "реклама", "ставки", "казино", "melbet", "1xbet", "фонабет", "париматч",
                 "винлайн", "бонус", "промокод", "заработай", "заработок", "присоединяйся",
-                "покупай", "закажи", "забрать", "бонус", "бонусы", "компания", "запускает",
-                "подарок", "подарки", "подарка", "подарков", "оформите", "канал", "каналы",
-                "подписка", "успей", "успеть", "рбк", "скидка", "скидки", "сбер", "вы",
-                "альфа", "вк", "vk", "т-банк" , "t-банк", "успейте", "обратите", "обсуждает",
-                "розыгрыш", "розыгрыша", "победители", "распродажа", "скидка", "скидкой",
-                "скидки", "мы", "будем"
+                "покупай", "закажи", "забрать", "бонусы", "подарок", "подарки", "подарка",
+                "подарков", "оформите", "подписка", "успей", "успеть", "скидка", "скидки",
+                "т-банк", "t-банк", "успейте", "розыгрыш", "розыгрыша", "победители",
+                "распродажа", "скидкой", "vk"
         };
 
-        // ⚠️ РИСКИ (политика/война)
         String[] riskKeywords = {
                 "путин", "медведев", "патрушев", "шойгу", "лавров", "сво",
                 "набиуллина", "мишустин", "силуанов", "зеленский", "украина", "мобилизация",
-                "спецоперация", "денацификация", "террористы", "нацисты", "всу", "азов",
-                "крым", "донбасс", "лднр", "днр", "лнр", "цб", "роскомнадзор", "ркн", "лгбт",
-                "max", "фсб", "депутат", "депутаты", "госдума", "госдуме", "госдумы", "мвд"
+                "спецоперация", "денацификация", "всу", "азов", "крым", "донбасс",
+                "лднр", "днр", "лнр", "роскомнадзор", "ркн",
+                "фсб", "депутат", "депутаты", "госдума", "госдуме", "госдумы"
         };
 
-        // Проверяем все ключевые слова
         for (String keyword : adKeywords) {
             if (lower.contains(keyword)) return true;
         }
@@ -218,14 +205,9 @@ public class ParserService {
             if (lower.contains(keyword)) return true;
         }
 
-        // 📊 >10 слешей = спам со ссылками
         if (lower.chars().filter(ch -> ch == '/').count() > 10) return true;
-
-        // 📢 >5 !? = кричащий спам
         if (lower.chars().filter(ch -> ch == '!' || ch == '?').count() > 5) return true;
 
         return false;
     }
-
-
 }
