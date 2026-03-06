@@ -275,53 +275,68 @@ public class NewsBot extends TelegramLongPollingBot {
 
     // --- НОВЫЙ МЕТОД ДЛЯ ВИДЕО ---
     public void sendVideo(long chatId, String videoUrl, String caption) {
+        java.io.File tempFile = null;
         try {
-            log.info("🎥 Скачиваю ВИДЕО ПОЛНОСТЬЮ: {}", videoUrl);
+            log.info("🎥 Скачиваю видео во временный файл: {}", videoUrl);
 
-            // 1. Скачиваем ВСЁ видео в память/файл
             URL url = new URL(videoUrl);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
             conn.setConnectTimeout(15000);
-            conn.setReadTimeout(120000); // 2 минуты на БОЛЬШОЕ видео
+            conn.setReadTimeout(120000);
             conn.connect();
 
             if (conn.getResponseCode() == 200) {
-                try (InputStream inputStream = conn.getInputStream()) {
-                    // 2. Создаём SendVideo с InputStream
-                    SendVideo video = new SendVideo();
-                    video.setChatId(String.valueOf(chatId));
+                // Сохраняем на диск
+                tempFile = java.io.File.createTempFile("tg_video_", ".mp4");
+                try (InputStream inputStream = conn.getInputStream();
+                     java.io.FileOutputStream fos = new java.io.FileOutputStream(tempFile)) {
 
-                    // КЛЮЧЕВОЕ: filename с .mp4 ОБЯЗАТЕЛЬНО!
-                    InputFile videoFile = new InputFile(inputStream, "video_" + System.currentTimeMillis() + ".mp4");
-                    video.setVideo(videoFile);
-
-                    // 3. Обрезаем caption
-                    if (caption.length() > 1024) {
-                        caption = caption.substring(0, 1021) + "...";
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        fos.write(buffer, 0, bytesRead);
                     }
-                    video.setCaption(caption);
-                    video.setParseMode("HTML");
+                }
 
-                    // 4. ✅ Telegram сам сделает превью + плеер
-                    video.setSupportsStreaming(true);
+                log.info("✅ Видео скачано: {} байт", tempFile.length());
 
-                    execute(video);
-                    log.info("✅ ✅ ВИДЕО ОТПРАВЛЕНО ПОЛНОСТЬЮ! ({})", videoUrl);
+                // Лимит Telegram Bot API — 50 МБ
+                if (tempFile.length() > 50 * 1024 * 1024) {
+                    log.warn("⚠️ Видео > 50 МБ ({}), отправляю текст", tempFile.length());
+                    sendText(chatId, caption);
                     return;
                 }
+
+                SendVideo video = new SendVideo();
+                video.setChatId(String.valueOf(chatId));
+                video.setVideo(new InputFile(tempFile));
+                if (caption.length() > 1024) {
+                    caption = caption.substring(0, 1021) + "...";
+                }
+                video.setCaption(caption);
+                video.setParseMode("HTML");
+                video.setSupportsStreaming(true);
+
+                execute(video);
+                log.info("✅ Видео отправлено! ({})", videoUrl);
+
             } else {
                 log.warn("❌ HTTP {} для видео: {}", conn.getResponseCode(), videoUrl);
+                sendText(chatId, caption);
             }
+
         } catch (Exception e) {
             log.error("❌ Ошибка sendVideo {}: {}", videoUrl, e.getMessage(), e);
+            sendText(chatId, caption);
+        } finally {
+            // Всегда удаляем tempFile
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+                log.info("🗑️ Временный файл удалён");
+            }
         }
-
-        // Фоллбэк: текст
-        log.info("📝 Фоллбэк видео -> текст");
-        sendText(chatId, caption);
     }
-
 
     // --- ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ---
 
