@@ -28,6 +28,7 @@ public class ParserService {
         private String text;
         private String imageUrl;
         private boolean isVideo;
+        private String originalTitle; // 🆕 первые 120 символов оригинала до GPT
 
         public int getPostId() { return postId; }
         public void setPostId(int postId) { this.postId = postId; }
@@ -40,6 +41,9 @@ public class ParserService {
 
         public boolean isVideo() { return isVideo; }
         public void setVideo(boolean video) { isVideo = video; }
+
+        public String getOriginalTitle() { return originalTitle; }
+        public void setOriginalTitle(String originalTitle) { this.originalTitle = originalTitle; }
     }
 
     @Transactional
@@ -104,7 +108,6 @@ public class ParserService {
                     Element videoThumb = msg.selectFirst(".tgme_widget_message_video_thumb");
                     if (videoThumb != null) {
                         mediaUrl = extractUrlFromStyle(videoThumb.attr("style"));
-                        // isVideo остаётся false — отправим превью как фото
                     }
                 }
 
@@ -135,6 +138,8 @@ public class ParserService {
                 post.setText(rawText);
                 post.setImageUrl(mediaUrl);
                 post.setVideo(isVideo);
+                // 🆕 сохраняем первые 120 символов оригинала как заголовок
+                post.setOriginalTitle(rawText.length() > 120 ? rawText.substring(0, 120) : rawText);
                 newPosts.add(post);
 
                 if (mediaUrl != null) {

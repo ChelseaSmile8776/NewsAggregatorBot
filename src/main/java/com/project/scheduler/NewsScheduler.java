@@ -60,6 +60,12 @@ public class NewsScheduler {
                     for (ParserService.ParsedPost parsedPost : newPosts) {
                         if (!seenPostIds.add(parsedPost.getPostId())) continue;
 
+                        // 🆕 Проверка по заголовку ДО вызова GPT — экономим токены
+                        if (fingerprintService.isSimilarTitle(parsedPost.getOriginalTitle())) {
+                            log.info("⏭️ Дубликат по заголовку пропущен: {} (postId={})", source.getName(), parsedPost.getPostId());
+                            continue;
+                        }
+
                         String systemPrompt = (source.getSystemPrompt() != null && !source.getSystemPrompt().isEmpty())
                                 ? source.getSystemPrompt()
                                 : "Ты редактор Telegram-канала.";
@@ -76,10 +82,13 @@ public class NewsScheduler {
                         // ✅ Проверяем дубликат по фингерпринту саммари
                         String fingerprint = fingerprintService.createFingerprint(summary);
                         if (fingerprintService.isDuplicate(fingerprint)) {
-                            log.info("⏭️ Дубликат пропущен: {} (postId={})", source.getName(), parsedPost.getPostId());
+                            log.info("⏭️ Дубликат по фингерпринту пропущен: {} (postId={})", source.getName(), parsedPost.getPostId());
                             continue;
                         }
+
                         fingerprintService.addFingerprint(fingerprint);
+                        // 🆕 Сохраняем заголовок только после всех проверок
+                        fingerprintService.addTitle(parsedPost.getOriginalTitle());
 
                         PostQueue queueItem = new PostQueue();
                         queueItem.setContent(summary.trim());
