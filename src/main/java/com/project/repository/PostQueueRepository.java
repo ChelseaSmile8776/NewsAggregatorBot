@@ -17,11 +17,14 @@ public interface PostQueueRepository extends JpaRepository<PostQueue, Long> {
     List<PostQueue> findAllByStatusAndScheduledTimeBefore(PostQueue.Status status, LocalDateTime time);
     List<PostQueue> findByStatusOrderByScheduledTimeAsc(PostQueue.Status status);
 
-    // ✅ НОВЫЙ МЕТОД ДЛЯ УДАЛЕНИЯ!
     @Modifying
     @Query("DELETE FROM PostQueue p WHERE p.targetChannel.id = :targetId")
     void deleteByTargetChannelId(@Param("targetId") Long targetId);
 
     List<PostQueue> findByStatusAndImageUrlContainingIgnoreCaseOrderByScheduledTimeAsc(
             PostQueue.Status status, String imageUrl);
+
+    // ✅ Для дедупликации: последние отправленные посты за N часов
+    @Query("SELECT p FROM PostQueue p WHERE p.status = 'SENT' AND p.scheduledTime >= :since ORDER BY p.scheduledTime DESC")
+    List<PostQueue> findRecentSent(@Param("since") LocalDateTime since);
 }

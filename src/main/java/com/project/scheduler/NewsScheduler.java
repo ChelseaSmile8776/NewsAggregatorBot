@@ -60,9 +60,17 @@ public class NewsScheduler {
                     for (ParserService.ParsedPost parsedPost : newPosts) {
                         if (!seenPostIds.add(parsedPost.getPostId())) continue;
 
-                        // 🆕 Проверка по заголовку ДО вызова GPT — экономим токены
+                        // 🚫 Скипаем видео без прямой ссылки — нет смысла постить трейлер без видео
+                        if (parsedPost.isVideo() && parsedPost.getImageUrl() == null) {
+                            log.info("⏭️ Пропущено: видео без прямой ссылки — {} (postId={})",
+                                    source.getName(), parsedPost.getPostId());
+                            continue;
+                        }
+
+                        // Проверка по заголовку ДО вызова GPT — экономим токены
                         if (fingerprintService.isSimilarTitle(parsedPost.getOriginalTitle())) {
-                            log.info("⏭️ Дубликат по заголовку пропущен: {} (postId={})", source.getName(), parsedPost.getPostId());
+                            log.info("⏭️ Дубликат по заголовку пропущен: {} (postId={})",
+                                    source.getName(), parsedPost.getPostId());
                             continue;
                         }
 
@@ -75,19 +83,20 @@ public class NewsScheduler {
 
                         String upper = summary.trim().toUpperCase(Locale.ROOT);
                         if (upper.contains("SKIP")) {
-                            log.info("🚫 Отсеяно GPT (реклама/спам): {} (postId={})", source.getName(), parsedPost.getPostId());
+                            log.info("🚫 Отсеяно GPT (реклама/спам): {} (postId={})",
+                                    source.getName(), parsedPost.getPostId());
                             continue;
                         }
 
-                        // ✅ Проверяем дубликат по фингерпринту саммари
+                        // Проверяем дубликат по фингерпринту саммари
                         String fingerprint = fingerprintService.createFingerprint(summary);
                         if (fingerprintService.isDuplicate(fingerprint)) {
-                            log.info("⏭️ Дубликат по фингерпринту пропущен: {} (postId={})", source.getName(), parsedPost.getPostId());
+                            log.info("⏭️ Дубликат по фингерпринту пропущен: {} (postId={})",
+                                    source.getName(), parsedPost.getPostId());
                             continue;
                         }
 
                         fingerprintService.addFingerprint(fingerprint);
-                        // 🆕 Сохраняем заголовок только после всех проверок
                         fingerprintService.addTitle(parsedPost.getOriginalTitle());
 
                         PostQueue queueItem = new PostQueue();

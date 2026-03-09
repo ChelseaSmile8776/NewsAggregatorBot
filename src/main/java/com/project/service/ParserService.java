@@ -28,7 +28,7 @@ public class ParserService {
         private String text;
         private String imageUrl;
         private boolean isVideo;
-        private String originalTitle; // 🆕 первые 120 символов оригинала до GPT
+        private String originalTitle;
 
         public int getPostId() { return postId; }
         public void setPostId(int postId) { this.postId = postId; }
@@ -103,24 +103,25 @@ public class ParserService {
                     isVideo = true;
                 }
 
-                // 2. Превью видео — шлём как фото (прямого URL нет)
+                // 2. Превью видео — прямого URL нет, помечаем как видео и пропускаем
                 if (mediaUrl == null) {
                     Element videoThumb = msg.selectFirst(".tgme_widget_message_video_thumb");
                     if (videoThumb != null) {
-                        mediaUrl = extractUrlFromStyle(videoThumb.attr("style"));
+                        isVideo = true; // ✅ помечаем как видео, mediaUrl остаётся null
+                        log.info("⏭️ Видео без прямой ссылки (только превью) для поста {}", postId);
                     }
                 }
 
-                // 3. Обычное фото
-                if (mediaUrl == null) {
+                // 3. Обычное фото (только если не видео)
+                if (mediaUrl == null && !isVideo) {
                     Element photo = msg.selectFirst(".tgme_widget_message_photo_wrap");
                     if (photo != null) {
                         mediaUrl = extractUrlFromStyle(photo.attr("style"));
                     }
                 }
 
-                // 4. Link preview
-                if (mediaUrl == null) {
+                // 4. Link preview (только если не видео)
+                if (mediaUrl == null && !isVideo) {
                     Element linkPreview = msg.selectFirst(".tgme_widget_message_link_preview_photo, .link_preview_image");
                     if (linkPreview != null) {
                         mediaUrl = extractUrlFromStyle(linkPreview.attr("style"));
@@ -138,7 +139,6 @@ public class ParserService {
                 post.setText(rawText);
                 post.setImageUrl(mediaUrl);
                 post.setVideo(isVideo);
-                // 🆕 сохраняем первые 120 символов оригинала как заголовок
                 post.setOriginalTitle(rawText.length() > 120 ? rawText.substring(0, 120) : rawText);
                 newPosts.add(post);
 
@@ -192,7 +192,8 @@ public class ParserService {
                 "покупай", "закажи", "забрать", "бонусы", "подарок", "подарки", "подарка",
                 "подарков", "оформите", "подписка", "успей", "успеть", "скидка", "скидки",
                 "т-банк", "t-банк", "успейте", "розыгрыш", "розыгрыша", "победители",
-                "распродажа", "скидкой", "vk"
+                "распродажа", "скидкой", "vk", "подробности в видео", "подробнее в видео",
+                "смотрите видео", "видеообзор", "в нашем видео"
         };
 
         String[] riskKeywords = {
