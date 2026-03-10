@@ -18,16 +18,17 @@ import java.util.stream.Collectors;
 @Slf4j
 public class PublisherService {
 
+    private static final int STALE_HOURS = 4;
+
     private final PostQueueRepository postQueueRepository;
     private final NewsBot newsBot;
 
-    // 🔥 10 мин интервал + ПРИОРИТЕТ ВИДЕО!
     @Scheduled(fixedDelay = 600000)
     @Transactional
     public void publishNextPost() {
         log.info("🚀 === PUBLISHER ЗАПУЩЕН! {} ===", LocalDateTime.now());
 
-        // 🎥 1. ПРОВЕРЯЕМ ВИДЕО ПЕРВЫМИ (mp4) - ✅ РАБОТАЕТ!
+        // 🎥 1. ПРОВЕРЯЕМ ВИДЕО ПЕРВЫМИ (mp4)
         List<PostQueue> videoPosts = postQueueRepository.findByStatusOrderByScheduledTimeAsc(PostQueue.Status.PENDING)
                 .stream()
                 .filter(p -> p.getImageUrl() != null && p.getImageUrl().toLowerCase().contains(".mp4"))
@@ -57,13 +58,21 @@ public class PublisherService {
     }
 
     private void publishPost(PostQueue post) {
+        // 🆕 Пропускаем залежавшиеся посты (накопились во время даунтайма)
+        if (post.getScheduledTime() != null &&
+                post.getScheduledTime().isBefore(LocalDateTime.now().minusHours(STALE_HOURS))) {
+            log.warn("🗑️ Пост ID={} устарел (старше {}ч), пропускаю", post.getId(), STALE_HOURS);
+            post.setStatus(PostQueue.Status.ERROR); // или добавь статус EXPIRED если хочешь отличать
+            postQueueRepository.save(post);
+            return;
+        }
+
         try {
             Long chatId = Long.parseLong(post.getTargetChannel().getTelegramId());
             String cleanContent = cleanHtml(post.getContent());
             String url = post.getImageUrl();
 
             if (url != null && !url.trim().isEmpty()) {
-                // 🔥 ИСПРАВЛЕННАЯ ЛОГИКА ВИДЕО!
                 if (isVideoUrl(url)) {
                     log.info("🎥 ВИДЕО ОТПРАВЛЯЮ: {}", url);
                     newsBot.sendVideo(chatId, url, cleanContent);
@@ -87,20 +96,15 @@ public class PublisherService {
         }
     }
 
-    // 🔥 ИСПРАВЛЕННЫЙ isVideoUrl - ПРОВЕРКА ПЕРЕД .sendPhoto!
     private boolean isVideoUrl(String url) {
         if (url == null) return false;
         String lower = url.toLowerCase();
-
-        if (lower.contains(".mp4") ||
+        return lower.contains(".mp4") ||
                 lower.contains(".mov") ||
                 lower.contains(".avi") ||
                 lower.contains(".mkv") ||
                 lower.contains("blob:") ||
-                lower.contains("video/")) {
-            return true;
-        }
-        return false;
+                lower.contains("video/");
     }
 
     private String cleanHtml(String input) {

@@ -4,6 +4,7 @@ import com.project.entity.PostQueue;
 import com.project.entity.Source;
 import com.project.repository.PostQueueRepository;
 import com.project.service.BotService;
+import com.project.service.DuplicateDetector;
 import com.project.service.FingerprintService;
 import com.project.service.OpenAIService;
 import com.project.service.ParserService;
@@ -29,6 +30,7 @@ public class NewsScheduler {
     private final OpenAIService openAiService;
     private final PostQueueRepository postQueueRepository;
     private final FingerprintService fingerprintService;
+    private final DuplicateDetector duplicateDetector;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
 
@@ -60,9 +62,17 @@ public class NewsScheduler {
                     for (ParserService.ParsedPost parsedPost : newPosts) {
                         if (!seenPostIds.add(parsedPost.getPostId())) continue;
 
-                        // 🚫 Скипаем видео без прямой ссылки — нет смысла постить трейлер без видео
+                        // 🚫 Скипаем видео без прямой ссылки
                         if (parsedPost.isVideo() && parsedPost.getImageUrl() == null) {
                             log.info("⏭️ Пропущено: видео без прямой ссылки — {} (postId={})",
+                                    source.getName(), parsedPost.getPostId());
+                            continue;
+                        }
+
+                        // 🆕 Keyword дедуп: один инфоповод = одна новость на канал за 6ч
+                        String channelTitle = source.getTargetChannel().getTitle();
+                        if (duplicateDetector.isDuplicate(channelTitle, parsedPost.getOriginalTitle())) {
+                            log.info("⏭️ Дубликат по ключевым словам пропущен: {} (postId={})",
                                     source.getName(), parsedPost.getPostId());
                             continue;
                         }
